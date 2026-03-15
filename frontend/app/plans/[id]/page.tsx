@@ -629,7 +629,6 @@ export default function PlanDetailPage() {
               <p className="text-gray-400 text-xs mt-1">{plan.plan_data?.total_weeks} weeks total</p>
             </div>
           </div>
-        </div>
 
         {/* Garmin credentials modal */}
         {showGarminModal && (
