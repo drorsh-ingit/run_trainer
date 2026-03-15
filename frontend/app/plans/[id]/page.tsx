@@ -194,7 +194,9 @@ export default function PlanDetailPage() {
   const [deleting, setDeleting] = useState(false);
   const [showPullMenu, setShowPullMenu] = useState(false);
   const pullMenuRef = useRef<HTMLDivElement>(null);
+  const [pullMenuPos, setPullMenuPos] = useState<{top: number; left: number} | null>(null);
   const [showExportMenu, setShowExportMenu] = useState(false);
+  const [exportMenuPos, setExportMenuPos] = useState<{top: number; left: number} | null>(null);
   const [exportSubmenu, setExportSubmenu] = useState<"garmin" | "gcal" | null>(null);
   const exportMenuRef = useRef<HTMLDivElement>(null);
 
@@ -479,13 +481,19 @@ export default function PlanDetailPage() {
               </Link>
               <div ref={exportMenuRef} className="relative">
                 <button
-                  onClick={() => { setShowPullMenu(false); setShowExportMenu(v => !v); }}
+                  onClick={(e) => {
+                    setShowPullMenu(false);
+                    setExportSubmenu(null);
+                    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                    setExportMenuPos({ top: rect.bottom + 4, left: Math.max(8, Math.min(rect.left, window.innerWidth - 184)) });
+                    setShowExportMenu(v => !v);
+                  }}
                   className="text-blue-500 hover:text-blue-700 text-sm transition-colors"
                 >
                   Push Workouts ▾
                 </button>
-                {showExportMenu && (
-                  <div className="absolute left-0 mt-1 w-44 bg-white border border-gray-200 rounded-xl shadow-lg z-10 py-1 text-sm">
+                {showExportMenu && exportMenuPos && (
+                  <div style={{ position: "fixed", top: exportMenuPos.top, left: exportMenuPos.left }} className="w-44 bg-white border border-gray-200 rounded-xl shadow-lg z-50 py-1 text-sm">
                     {/* ── Garmin ── */}
                     <div className="relative">
                       <button
@@ -499,7 +507,7 @@ export default function PlanDetailPage() {
                         <span className="text-gray-400 text-xs">›</span>
                       </button>
                       {exportSubmenu === "garmin" && (
-                        <div className="absolute right-0 top-full mt-1 sm:left-full sm:top-0 sm:mt-0 sm:ml-1 w-52 bg-white border border-gray-200 rounded-xl shadow-lg py-1 text-sm z-20">
+                        <div className="absolute left-0 top-full mt-1 w-52 bg-white border border-gray-200 rounded-xl shadow-lg py-1 text-sm z-20">
                           {garminStatus?.connected ? (
                             <>
                               <button
@@ -550,7 +558,7 @@ export default function PlanDetailPage() {
                         <span className="text-gray-400 text-xs">›</span>
                       </button>
                       {exportSubmenu === "gcal" && (
-                        <div className="absolute right-0 top-full mt-1 sm:left-full sm:top-0 sm:mt-0 sm:ml-1 w-48 bg-white border border-gray-200 rounded-xl shadow-lg py-1 text-sm z-20">
+                        <div className="absolute left-0 top-full mt-1 w-48 bg-white border border-gray-200 rounded-xl shadow-lg py-1 text-sm z-20">
                           <button
                             onClick={() => { setShowExportMenu(false); setExportSubmenu(null); /* TODO: ICS export */ }}
                             className="w-full text-left px-4 py-2 hover:bg-gray-50 text-gray-800"
@@ -565,13 +573,19 @@ export default function PlanDetailPage() {
               </div>
               <div ref={pullMenuRef} className="relative">
                 <button
-                  onClick={() => { setShowExportMenu(false); setExportSubmenu(null); setShowPullMenu(v => !v); }}
+                  onClick={(e) => {
+                    setShowExportMenu(false);
+                    setExportSubmenu(null);
+                    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                    setPullMenuPos({ top: rect.bottom + 4, left: Math.max(8, Math.min(rect.left, window.innerWidth - 216)) });
+                    setShowPullMenu(v => !v);
+                  }}
                   className="text-teal-600 hover:text-teal-800 text-sm transition-colors"
                 >
                   Pull Activities ▾
                 </button>
-                {showPullMenu && (
-                  <div className="absolute left-0 mt-1 w-52 bg-white border border-gray-200 rounded-xl shadow-lg z-10 py-1 text-sm">
+                {showPullMenu && pullMenuPos && (
+                  <div style={{ position: "fixed", top: pullMenuPos.top, left: pullMenuPos.left }} className="w-52 bg-white border border-gray-200 rounded-xl shadow-lg z-50 py-1 text-sm">
                     {garminStatus?.connected ? (
                       <>
                         <button
