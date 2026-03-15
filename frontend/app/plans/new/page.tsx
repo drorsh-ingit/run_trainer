@@ -386,7 +386,7 @@ export default function NewPlanPage() {
 
               {/* Runner info */}
               {form.plan_type === "race" && (
-                <div>
+                <div className="max-w-xs">
                   <label className="block text-sm font-medium text-gray-700 mb-1">Goal race name <span className="text-gray-400 font-normal">(optional)</span></label>
                   <input
                     type="text"
