@@ -497,12 +497,11 @@ export default function PlanDetailPage() {
                 {showExportMenu && (
                   <div className="absolute right-0 mt-1 w-44 bg-white border border-gray-200 rounded-xl shadow-lg z-10 py-1 text-sm">
                     {/* ── Garmin ── */}
-                    <div
-                      className="relative group/garmin"
-                      onMouseEnter={() => setExportSubmenu("garmin")}
-                      onMouseLeave={() => setExportSubmenu(null)}
-                    >
-                      <button className="w-full text-left px-4 py-2 hover:bg-gray-50 text-gray-800 flex items-center justify-between">
+                    <div className="relative">
+                      <button
+                        onClick={() => setExportSubmenu(exportSubmenu === "garmin" ? null : "garmin")}
+                        className="w-full text-left px-4 py-2 hover:bg-gray-50 text-gray-800 flex items-center justify-between"
+                      >
                         <span className="flex items-center gap-2">
                           Garmin
                           {garminStatus?.connected && <span className="text-[10px] text-green-500 font-medium">connected</span>}
@@ -510,7 +509,7 @@ export default function PlanDetailPage() {
                         <span className="text-gray-400 text-xs">›</span>
                       </button>
                       {exportSubmenu === "garmin" && (
-                        <div className="absolute left-full top-0 ml-1 w-52 bg-white border border-gray-200 rounded-xl shadow-lg py-1 text-sm" onMouseEnter={() => setExportSubmenu("garmin")}>
+                        <div className="absolute left-full top-0 ml-1 w-52 bg-white border border-gray-200 rounded-xl shadow-lg py-1 text-sm">
                           {garminStatus?.connected ? (
                             <>
                               <button
@@ -552,17 +551,16 @@ export default function PlanDetailPage() {
                     </div>
 
                     {/* ── Google Calendar ── */}
-                    <div
-                      className="relative"
-                      onMouseEnter={() => setExportSubmenu("gcal")}
-                      onMouseLeave={() => setExportSubmenu(null)}
-                    >
-                      <button className="w-full text-left px-4 py-2 hover:bg-gray-50 text-gray-800 flex items-center justify-between">
+                    <div className="relative">
+                      <button
+                        onClick={() => setExportSubmenu(exportSubmenu === "gcal" ? null : "gcal")}
+                        className="w-full text-left px-4 py-2 hover:bg-gray-50 text-gray-800 flex items-center justify-between"
+                      >
                         <span>Google Calendar</span>
                         <span className="text-gray-400 text-xs">›</span>
                       </button>
                       {exportSubmenu === "gcal" && (
-                        <div className="absolute left-full top-0 ml-1 w-48 bg-white border border-gray-200 rounded-xl shadow-lg py-1 text-sm" onMouseEnter={() => setExportSubmenu("gcal")}>
+                        <div className="absolute left-full top-0 ml-1 w-48 bg-white border border-gray-200 rounded-xl shadow-lg py-1 text-sm">
                           <button
                             onClick={() => { setShowExportMenu(false); setExportSubmenu(null); /* TODO: ICS export */ }}
                             className="w-full text-left px-4 py-2 hover:bg-gray-50 text-gray-800"
