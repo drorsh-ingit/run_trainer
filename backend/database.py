@@ -9,7 +9,7 @@ engine = create_engine(
     db_url,
     connect_args={"check_same_thread": False} if is_sqlite else {"sslmode": "require"},
     pool_pre_ping=True,  # test connections before use — fixes Neon idle disconnects
-    pool_recycle=300,    # recycle connections every 5 minutes
+    pool_recycle=60,     # recycle connections every 60s (Neon closes idle after ~5min)
 )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
