@@ -510,7 +510,7 @@ export default function PlanDetailPage() {
                         <span className="text-gray-400 text-xs">›</span>
                       </button>
                       {exportSubmenu === "garmin" && (
-                        <div className="absolute left-full top-0 ml-1 w-52 bg-white border border-gray-200 rounded-xl shadow-lg py-1 text-sm">
+                        <div className="absolute left-full top-0 ml-1 w-52 bg-white border border-gray-200 rounded-xl shadow-lg py-1 text-sm" onMouseEnter={() => setExportSubmenu("garmin")}>
                           {garminStatus?.connected ? (
                             <>
                               <button
@@ -562,7 +562,7 @@ export default function PlanDetailPage() {
                         <span className="text-gray-400 text-xs">›</span>
                       </button>
                       {exportSubmenu === "gcal" && (
-                        <div className="absolute left-full top-0 ml-1 w-48 bg-white border border-gray-200 rounded-xl shadow-lg py-1 text-sm">
+                        <div className="absolute left-full top-0 ml-1 w-48 bg-white border border-gray-200 rounded-xl shadow-lg py-1 text-sm" onMouseEnter={() => setExportSubmenu("gcal")}>
                           <button
                             onClick={() => { setShowExportMenu(false); setExportSubmenu(null); /* TODO: ICS export */ }}
                             className="w-full text-left px-4 py-2 hover:bg-gray-50 text-gray-800"
