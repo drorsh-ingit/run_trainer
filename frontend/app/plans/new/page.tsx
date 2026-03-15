@@ -78,7 +78,6 @@ type ChatMsg = { role: "user" | "assistant"; content: string; isPlanUpdate?: boo
 
 type FormState = {
   plan_type: "" | "race" | "general";
-  runner_name: string;
   goal_race_name: string;
   goal_distance_km: string;
   goal_date: string;
@@ -101,7 +100,6 @@ function formToPayload(form: FormState) {
   const isRace = form.plan_type === "race";
   return {
     plan_type: form.plan_type,
-    runner_name: form.runner_name,
     goal_race_name: isRace ? form.goal_race_name : "",
     goal_distance_km: isRace ? parseFloat(form.goal_distance_km) : null,
     goal_date: isRace ? form.goal_date : null,
@@ -128,7 +126,6 @@ export default function NewPlanPage() {
   const [stage, setStage] = useState<"form" | "questions" | "building" | "preview">("form");
   const [form, setForm] = useState<FormState>({
     plan_type: "",
-    runner_name: "",
     goal_race_name: "",
     goal_distance_km: "42.2",
     goal_date: "",
@@ -388,31 +385,18 @@ export default function NewPlanPage() {
               {form.plan_type !== "" && (<>
 
               {/* Runner info */}
-              <div className="grid grid-cols-2 gap-4">
+              {form.plan_type === "race" && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Your name</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Goal race name <span className="text-gray-400 font-normal">(optional)</span></label>
                   <input
                     type="text"
-                    required
-                    value={form.runner_name}
-                    onChange={e => setForm({ ...form, runner_name: e.target.value })}
+                    value={form.goal_race_name}
+                    onChange={e => setForm({ ...form, goal_race_name: e.target.value })}
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="e.g. Alex"
+                    placeholder="e.g. Berlin Marathon"
                   />
                 </div>
-                {form.plan_type === "race" && (
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Goal race name <span className="text-gray-400 font-normal">(optional)</span></label>
-                    <input
-                      type="text"
-                      value={form.goal_race_name}
-                      onChange={e => setForm({ ...form, goal_race_name: e.target.value })}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="e.g. Berlin Marathon"
-                    />
-                  </div>
-                )}
-              </div>
+              )}
 
               {form.plan_type === "race" ? (
                 <div className="grid grid-cols-2 gap-4">
