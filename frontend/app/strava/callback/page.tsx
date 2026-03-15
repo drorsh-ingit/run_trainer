@@ -1,10 +1,11 @@
 "use client";
 
+import { Suspense } from "react";
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { apiFetch } from "../../hooks/useAuth";
 
-export default function StravaCallbackPage() {
+function StravaCallbackPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [status, setStatus] = useState("Connecting to Strava…");
@@ -43,5 +44,13 @@ export default function StravaCallbackPage() {
         <p className="text-gray-700 text-sm">{status}</p>
       </div>
     </div>
+  );
+}
+
+export default function StravaCallbackPageWrapper() {
+  return (
+    <Suspense>
+      <StravaCallbackPage />
+    </Suspense>
   );
 }

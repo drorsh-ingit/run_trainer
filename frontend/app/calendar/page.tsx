@@ -1,5 +1,6 @@
 "use client";
 
+import { Suspense } from "react";
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
@@ -347,7 +348,7 @@ function ActivityCell({ activity, isCurrentMonth }: { activity: ActivityEntry; i
 }
 
 
-export default function CalendarPage() {
+function CalendarPage() {
   useRequireAuth();
   const searchParams = useSearchParams();
   const planId = searchParams.get("plan_id");
@@ -549,5 +550,13 @@ export default function CalendarPage() {
 
       </div>
     </div>
+  );
+}
+
+export default function CalendarPageWrapper() {
+  return (
+    <Suspense>
+      <CalendarPage />
+    </Suspense>
   );
 }
