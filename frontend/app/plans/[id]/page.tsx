@@ -470,8 +470,7 @@ export default function PlanDetailPage() {
         {/* Header */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
           <div className="flex flex-col gap-3">
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center gap-4 flex-wrap">
+            <div className="flex items-center gap-4 flex-wrap">
               <Link
                 href={`/calendar?plan_id=${plan.id}`}
                 className="text-blue-500 hover:text-blue-700 text-sm transition-colors"
@@ -486,7 +485,7 @@ export default function PlanDetailPage() {
                   Push Workouts ▾
                 </button>
                 {showExportMenu && (
-                  <div className="absolute right-0 mt-1 w-44 bg-white border border-gray-200 rounded-xl shadow-lg z-10 py-1 text-sm">
+                  <div className="absolute left-0 mt-1 w-44 bg-white border border-gray-200 rounded-xl shadow-lg z-10 py-1 text-sm">
                     {/* ── Garmin ── */}
                     <div className="relative">
                       <button
@@ -572,7 +571,7 @@ export default function PlanDetailPage() {
                   Pull Activities ▾
                 </button>
                 {showPullMenu && (
-                  <div className="absolute right-0 mt-1 w-52 bg-white border border-gray-200 rounded-xl shadow-lg z-10 py-1 text-sm">
+                  <div className="absolute left-0 mt-1 w-52 bg-white border border-gray-200 rounded-xl shadow-lg z-10 py-1 text-sm">
                     {garminStatus?.connected ? (
                       <>
                         <button
