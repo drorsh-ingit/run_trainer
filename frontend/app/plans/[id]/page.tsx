@@ -469,7 +469,7 @@ export default function PlanDetailPage() {
 
         {/* Header */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
-          <div className="flex items-start justify-between">
+          <div className="flex flex-col gap-4">
             <div>
               <h1 className="text-xl font-semibold text-gray-900">
                 {plan.plan_type === "general"
@@ -479,8 +479,8 @@ export default function PlanDetailPage() {
               <p className="text-gray-600 text-sm mt-2">{plan.plan_data?.summary}</p>
               <p className="text-gray-400 text-xs mt-1">{plan.plan_data?.total_weeks} weeks total</p>
             </div>
-            <div className="flex flex-col items-end gap-2 shrink-0 ml-4">
-              <div className="flex items-center gap-4">
+            <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:flex-wrap">
+              <div className="flex items-center gap-4 flex-wrap">
               <Link
                 href={`/calendar?plan_id=${plan.id}`}
                 className="text-blue-500 hover:text-blue-700 text-sm transition-colors"
@@ -509,7 +509,7 @@ export default function PlanDetailPage() {
                         <span className="text-gray-400 text-xs">›</span>
                       </button>
                       {exportSubmenu === "garmin" && (
-                        <div className="absolute left-full top-0 ml-1 w-52 bg-white border border-gray-200 rounded-xl shadow-lg py-1 text-sm">
+                        <div className="absolute right-0 top-full mt-1 sm:left-full sm:top-0 sm:mt-0 sm:ml-1 w-52 bg-white border border-gray-200 rounded-xl shadow-lg py-1 text-sm z-20">
                           {garminStatus?.connected ? (
                             <>
                               <button
@@ -560,7 +560,7 @@ export default function PlanDetailPage() {
                         <span className="text-gray-400 text-xs">›</span>
                       </button>
                       {exportSubmenu === "gcal" && (
-                        <div className="absolute left-full top-0 ml-1 w-48 bg-white border border-gray-200 rounded-xl shadow-lg py-1 text-sm">
+                        <div className="absolute right-0 top-full mt-1 sm:left-full sm:top-0 sm:mt-0 sm:ml-1 w-48 bg-white border border-gray-200 rounded-xl shadow-lg py-1 text-sm z-20">
                           <button
                             onClick={() => { setShowExportMenu(false); setExportSubmenu(null); /* TODO: ICS export */ }}
                             className="w-full text-left px-4 py-2 hover:bg-gray-50 text-gray-800"
