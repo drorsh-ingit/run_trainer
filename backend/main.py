@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from database import Base, engine
 from config import settings
-from routers import plans, strava, workouts, auth, garmin as garmin_router
+from routers import plans, strava, workouts, auth, garmin as garmin_router, admin
 
 Base.metadata.create_all(bind=engine)
 
@@ -37,6 +37,7 @@ app.include_router(strava.router)
 app.include_router(workouts.router)
 app.include_router(garmin_router.router)
 app.include_router(garmin_router.plans_router)
+app.include_router(admin.router)
 
 
 @app.get("/health")

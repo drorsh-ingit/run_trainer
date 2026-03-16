@@ -291,3 +291,15 @@ class PlanSummaryOut(BaseModel):
     summary: str
 
     model_config = {"from_attributes": True}
+
+
+class AdminPlanOut(BaseModel):
+    id: int
+    username: str
+    goal_distance: Optional[float]
+    goal_date: Optional[date]
+    plan_type: Optional[str]
+    plan_duration_weeks: Optional[int]
+    created_at: str
+
+    model_config = {"from_attributes": True}

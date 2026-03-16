@@ -32,6 +32,18 @@ export async function apiFetch(path: string, init: RequestInit = {}): Promise<Re
   return res;
 }
 
+/** Decode username from JWT payload (no signature verification — display only). */
+export function getUsername(): string | null {
+  const token = getToken();
+  if (!token) return null;
+  try {
+    const payload = JSON.parse(atob(token.split(".")[1]));
+    return payload.sub ?? null;
+  } catch {
+    return null;
+  }
+}
+
 /** Redirect to /login if no token. Call in page components. */
 export function useRequireAuth() {
   const router = useRouter();
