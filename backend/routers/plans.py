@@ -13,6 +13,9 @@ from services.auth import get_current_user
 
 router = APIRouter(prefix="/plans", tags=["plans"])
 
+def _is_authorized(plan, current_user) -> bool:
+    return plan.user_id == current_user.id or current_user.username == "admin"
+
 DAY_OFFSETS = {
     "Monday": 0, "Tuesday": 1, "Wednesday": 2, "Thursday": 3,
     "Friday": 4, "Saturday": 5, "Sunday": 6,
@@ -260,7 +263,7 @@ def garmin_export(
     plan = db.query(TrainingPlan).filter(TrainingPlan.id == plan_id).first()
     if not plan:
         raise HTTPException(404, "Plan not found")
-    if plan.user_id != current_user.id:
+    if not _is_authorized(plan, current_user):
         raise HTTPException(403, "Not authorized")
 
     query = (
@@ -324,7 +327,7 @@ def get_plan(plan_id: int, db: Session = Depends(get_db), current_user: User = D
     )
     if not plan:
         raise HTTPException(status_code=404, detail="Plan not found")
-    if plan.user_id != current_user.id:
+    if not _is_authorized(plan, current_user):
         raise HTTPException(status_code=403, detail="Not authorized to view this plan")
     return plan
 
@@ -334,7 +337,7 @@ def delete_plan(plan_id: int, db: Session = Depends(get_db), current_user: User 
     plan = db.query(TrainingPlan).filter(TrainingPlan.id == plan_id).first()
     if not plan:
         raise HTTPException(status_code=404, detail="Plan not found")
-    if plan.user_id != current_user.id:
+    if not _is_authorized(plan, current_user):
         raise HTTPException(status_code=403, detail="Not authorized")
     db.delete(plan)
     db.commit()
@@ -354,7 +357,7 @@ def chat_adjust(
     plan = db.query(TrainingPlan).filter(TrainingPlan.id == plan_id).first()
     if not plan:
         raise HTTPException(status_code=404, detail="Plan not found")
-    if plan.user_id != current_user.id:
+    if not _is_authorized(plan, current_user):
         raise HTTPException(status_code=403, detail="Not authorized")
 
     req = PlanCreateRequest(
