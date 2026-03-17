@@ -43,3 +43,12 @@ app.include_router(admin.router)
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+@app.get("/debug-env")
+def debug_env():
+    import os
+    return {
+        "strava_client_id_env": os.environ.get("STRAVA_CLIENT_ID", "NOT_SET"),
+        "strava_client_id_settings": settings.strava_client_id,
+        "frontend_url": settings.frontend_url,
+    }
