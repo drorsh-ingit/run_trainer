@@ -29,6 +29,10 @@ export async function apiFetch(path: string, init: RequestInit = {}): Promise<Re
     headers["Authorization"] = `Bearer ${token}`;
   }
   const res = await fetch(`${API}${path}`, { ...init, headers });
+  if (res.status === 401) {
+    clearToken();
+    window.location.href = "/login";
+  }
   return res;
 }
 
