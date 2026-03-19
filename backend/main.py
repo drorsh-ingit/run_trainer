@@ -7,20 +7,18 @@ from routers import plans, strava, workouts, auth, garmin as garmin_router, admi
 Base.metadata.create_all(bind=engine)
 
 from sqlalchemy import text
-with engine.connect() as conn:
-    for stmt in [
-        "ALTER TABLE planned_workouts ADD COLUMN steps JSON",
-        "ALTER TABLE strava_tokens ADD COLUMN user_id INTEGER REFERENCES users(id)",
-        "ALTER TABLE training_plans ADD COLUMN ai_model TEXT DEFAULT 'claude-sonnet-4-6'",
-        "ALTER TABLE training_plans ADD COLUMN plan_type TEXT DEFAULT 'race'",
-        "ALTER TABLE training_plans ADD COLUMN plan_duration_weeks INTEGER",
-        "ALTER TABLE users ADD COLUMN max_hr INTEGER",
-    ]:
-        try:
-            conn.execute(text(stmt))
-            conn.commit()
-        except Exception:
-            pass  # column already exists — safe to ignore
+_migrations = [
+    "ALTER TABLE planned_workouts ADD COLUMN IF NOT EXISTS steps JSON",
+    "ALTER TABLE strava_tokens ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id)",
+    "ALTER TABLE training_plans ADD COLUMN IF NOT EXISTS ai_model TEXT DEFAULT 'claude-sonnet-4-6'",
+    "ALTER TABLE training_plans ADD COLUMN IF NOT EXISTS plan_type TEXT DEFAULT 'race'",
+    "ALTER TABLE training_plans ADD COLUMN IF NOT EXISTS plan_duration_weeks INTEGER",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS max_hr INTEGER",
+]
+for stmt in _migrations:
+    with engine.connect() as conn:
+        conn.execute(text(stmt))
+        conn.commit()
 
 app = FastAPI(title="Run Trainer API", version="0.1.0")
 
