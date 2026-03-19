@@ -247,7 +247,11 @@ def plan_activities(
 
     rows = (
         db.query(WorkoutActivity)
-        .filter(WorkoutActivity.plan_id == plan_id)
+        .join(PlannedWorkout, WorkoutActivity.workout_id == PlannedWorkout.id, isouter=True)
+        .filter(
+            (WorkoutActivity.plan_id == plan_id) |
+            (PlannedWorkout.plan_id == plan_id)
+        )
         .all()
     )
 

@@ -191,7 +191,7 @@ def sync_plan_activities(plan_id: int, user_id: int, db: Session) -> dict:
 
         existing = db.query(WorkoutActivity).filter(WorkoutActivity.workout_id == workout.id).first()
         if not existing:
-            existing = WorkoutActivity(workout_id=workout.id)
+            existing = WorkoutActivity(workout_id=workout.id, plan_id=plan_id)
             db.add(existing)
 
         existing.strava_activity_id = str(act["id"])
