@@ -40,16 +40,17 @@ def _make_garth_client() -> garth.Client:
         import requests as _requests
 
         parsed = urllib.parse.urlparse(settings.garmin_proxy_url)
-        # urllib3.make_headers properly encodes proxy auth for CONNECT tunnels
-        proxy_headers = urllib3.make_headers(
+        _auth_header = urllib3.make_headers(
             proxy_basic_auth=f"{parsed.username}:{parsed.password}"
         )
         proxy_url = f"http://{parsed.hostname}:{parsed.port}"
 
         class _ProxyAdapter(_requests.adapters.HTTPAdapter):
-            def proxy_manager_for(self, proxy, **proxy_kwargs):
-                proxy_kwargs["proxy_headers"] = proxy_headers
-                return super().proxy_manager_for(proxy, **proxy_kwargs)
+            # requests calls this method to build headers for the CONNECT tunnel
+            def proxy_headers(self, proxy):
+                headers = super().proxy_headers(proxy)
+                headers.update(_auth_header)
+                return headers
 
         session = _requests.Session()
         session.proxies = {"http": proxy_url, "https": proxy_url}
