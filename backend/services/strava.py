@@ -105,24 +105,28 @@ def fetch_streams(access_token: str, activity_id: str) -> dict:
     return {k: v["data"] for k, v in data.items() if isinstance(v, dict) and "data" in v}
 
 
-# ── HR zone computation ───────────────────────────────────────────────────────
-
-def compute_hr_zones(hr_stream: list[int], max_hr: int = 185) -> list[int]:
-    """Return [z1%, z2%, z3%, z4%, z5%] as integers (sum to ~100)."""
-    thresholds = [0.60, 0.70, 0.80, 0.90, 1.01]
-    zones = [0, 0, 0, 0, 0]
-    for hr in hr_stream:
-        pct = hr / max_hr
-        for i, t in enumerate(thresholds):
-            if pct <= t:
-                zones[i] += 1
-                break
-        else:
-            zones[4] += 1
-    total = sum(zones)
+def fetch_hr_zones(access_token: str, activity_id: str) -> list[int] | None:
+    """Fetch HR zone distribution from Strava and return [z1%, z2%, z3%, z4%, z5%]."""
+    resp = httpx.get(
+        f"{STRAVA_API}/activities/{activity_id}/zones",
+        headers={"Authorization": f"Bearer {access_token}"},
+        timeout=30,
+    )
+    if resp.status_code in (404, 400):
+        return None
+    resp.raise_for_status()
+    zones_data = resp.json()
+    hr_zone = next((z for z in zones_data if z.get("type") == "heartrate"), None)
+    if not hr_zone:
+        return None
+    buckets = hr_zone.get("distribution_buckets", [])
+    if not buckets:
+        return None
+    times = [b.get("time", 0) for b in buckets]
+    total = sum(times)
     if total == 0:
-        return [0, 0, 0, 0, 0]
-    return [round(z * 100 / total) for z in zones]
+        return None
+    return [round(t * 100 / total) for t in times]
 
 
 # ── Matching ──────────────────────────────────────────────────────────────────
@@ -182,12 +186,18 @@ def sync_plan_activities(plan_id: int, user_id: int, db: Session) -> dict:
             skipped += 1
             continue
 
-        # Fetch streams (best-effort)
+        # Fetch streams and HR zones (best-effort)
         streams = {}
         try:
             streams = fetch_streams(access_token, str(act["id"]))
         except Exception as e:
             errors.append(f"Streams fetch failed for activity {act['id']}: {e}")
+        try:
+            hr_zones = fetch_hr_zones(access_token, str(act["id"]))
+            if hr_zones:
+                streams["hr_zones"] = hr_zones
+        except Exception as e:
+            errors.append(f"HR zones fetch failed for activity {act['id']}: {e}")
 
         existing = db.query(WorkoutActivity).filter(WorkoutActivity.workout_id == workout.id).first()
         if not existing:
