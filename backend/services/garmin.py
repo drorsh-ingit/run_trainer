@@ -35,28 +35,12 @@ def decrypt_str(ciphertext: str) -> str:
 def _make_garth_client() -> garth.Client:
     """Return a garth Client, routing through a proxy if GARMIN_PROXY_URL is set."""
     if settings.garmin_proxy_url:
-        import urllib.parse
-        import urllib3
         import requests as _requests
-
-        parsed = urllib.parse.urlparse(settings.garmin_proxy_url)
-        _auth_header = urllib3.make_headers(
-            proxy_basic_auth=f"{parsed.username}:{parsed.password}"
-        )
-        proxy_url = f"http://{parsed.hostname}:{parsed.port}"
-
-        class _ProxyAdapter(_requests.adapters.HTTPAdapter):
-            # requests calls this method to build headers for the CONNECT tunnel
-            def proxy_headers(self, proxy):
-                headers = super().proxy_headers(proxy)
-                headers.update(_auth_header)
-                return headers
-
         session = _requests.Session()
-        session.proxies = {"http": proxy_url, "https": proxy_url}
-        adapter = _ProxyAdapter()
-        session.mount("http://", adapter)
-        session.mount("https://", adapter)
+        session.proxies = {
+            "http": settings.garmin_proxy_url,
+            "https": settings.garmin_proxy_url,
+        }
         return garth.Client(session=session)
     return garth.Client()
 
