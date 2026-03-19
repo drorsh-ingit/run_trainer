@@ -35,8 +35,12 @@ def decrypt_str(ciphertext: str) -> str:
 def _make_garth_client() -> garth.Client:
     """Return a garth Client, routing through a proxy if GARMIN_PROXY_URL is set."""
     if settings.garmin_proxy_url:
-        import httpx
-        session = httpx.Client(proxy=settings.garmin_proxy_url, timeout=30)
+        import requests as _requests
+        session = _requests.Session()
+        session.proxies = {
+            "http": settings.garmin_proxy_url,
+            "https": settings.garmin_proxy_url,
+        }
         return garth.Client(session=session)
     return garth.Client()
 
