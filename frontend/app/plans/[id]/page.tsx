@@ -619,27 +619,6 @@ export default function PlanDetailPage() {
                 </button>
                 {showPullMenu && pullMenuPos && (
                   <div style={{ position: "fixed", top: pullMenuPos.top, left: pullMenuPos.left }} className="w-52 bg-white border border-gray-200 rounded-xl shadow-lg z-50 py-1 text-sm">
-                    {/* Garmin */}
-                    {garminStatus?.connected ? (
-                      <button
-                        onClick={() => { setShowPullMenu(false); handleActivitySync(); }}
-                        disabled={activitySyncing}
-                        className="w-full text-left px-4 py-2 hover:bg-gray-50 text-gray-800 disabled:text-gray-300"
-                      >
-                        <span className="flex items-center justify-between">
-                          <span>{activitySyncing ? "Pulling…" : "Pull from Garmin"}</span>
-                          <span className="text-[10px] text-green-500 font-medium">connected</span>
-                        </span>
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => { setShowPullMenu(false); setGarminReconnect(false); setShowGarminModal(true); }}
-                        className="w-full text-left px-4 py-2 hover:bg-gray-50 text-blue-600"
-                      >
-                        Connect Garmin…
-                      </button>
-                    )}
-                    <div className="border-t border-gray-100 my-1" />
                     {/* Strava */}
                     {stravaStatus?.connected ? (
                       <button
@@ -661,16 +640,8 @@ export default function PlanDetailPage() {
                       </button>
                     )}
                     {/* Disconnect options */}
-                    {(garminStatus?.connected || stravaStatus?.connected) && (
+                    {stravaStatus?.connected && (
                       <div className="border-t border-gray-100 mt-1 pt-1">
-                        {garminStatus?.connected && (
-                          <button
-                            onClick={() => { setShowPullMenu(false); apiFetch("/garmin/auth", { method: "DELETE" }).then(() => setGarminStatus({ connected: false })); }}
-                            className="w-full text-left px-4 py-2 hover:bg-gray-50 text-red-400 text-xs"
-                          >
-                            Disconnect Garmin
-                          </button>
-                        )}
                         {stravaStatus?.connected && (
                           <button
                             onClick={() => { setShowPullMenu(false); apiFetch("/strava/disconnect", { method: "DELETE" }).then(() => setStravaStatus({ connected: false })); }}
