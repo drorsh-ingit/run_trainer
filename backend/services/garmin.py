@@ -35,20 +35,27 @@ def decrypt_str(ciphertext: str) -> str:
 def _make_garth_client() -> garth.Client:
     """Return a garth Client, routing through a proxy if GARMIN_PROXY_URL is set."""
     if settings.garmin_proxy_url:
-        import base64
         import urllib.parse
+        import urllib3
         import requests as _requests
-        session = _requests.Session()
-        session.proxies = {
-            "http": settings.garmin_proxy_url,
-            "https": settings.garmin_proxy_url,
-        }
-        # requests doesn't send Proxy-Authorization during CONNECT for HTTPS tunnels;
-        # set it manually so the proxy accepts the credentials.
+
         parsed = urllib.parse.urlparse(settings.garmin_proxy_url)
-        if parsed.username and parsed.password:
-            creds = base64.b64encode(f"{parsed.username}:{parsed.password}".encode()).decode()
-            session.headers["Proxy-Authorization"] = f"Basic {creds}"
+        # urllib3.make_headers properly encodes proxy auth for CONNECT tunnels
+        proxy_headers = urllib3.make_headers(
+            proxy_basic_auth=f"{parsed.username}:{parsed.password}"
+        )
+        proxy_url = f"http://{parsed.hostname}:{parsed.port}"
+
+        class _ProxyAdapter(_requests.adapters.HTTPAdapter):
+            def proxy_manager_for(self, proxy, **proxy_kwargs):
+                proxy_kwargs["proxy_headers"] = proxy_headers
+                return super().proxy_manager_for(proxy, **proxy_kwargs)
+
+        session = _requests.Session()
+        session.proxies = {"http": proxy_url, "https": proxy_url}
+        adapter = _ProxyAdapter()
+        session.mount("http://", adapter)
+        session.mount("https://", adapter)
         return garth.Client(session=session)
     return garth.Client()
 
