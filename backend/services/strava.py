@@ -112,6 +112,7 @@ def fetch_hr_zones(access_token: str, activity_id: str) -> list[int] | None:
         headers={"Authorization": f"Bearer {access_token}"},
         timeout=30,
     )
+    print(f"[zones] activity={activity_id} status={resp.status_code} body={resp.text[:500]}")
     if resp.status_code in (404, 400):
         return None
     resp.raise_for_status()
