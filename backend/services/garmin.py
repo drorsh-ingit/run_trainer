@@ -47,11 +47,20 @@ def authenticate_garmin(username: str, password: str) -> tuple[str, str]:
     Returns (token_dump, display_name).
     Raises ValueError on bad credentials.
     """
+    import concurrent.futures
     client = _make_garth_client()
-    try:
-        client.login(username, password)
-    except Exception as e:
-        raise ValueError(f"Garmin authentication failed: {e}") from e
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(client.login, username, password)
+        try:
+            future.result(timeout=40)
+        except concurrent.futures.TimeoutError:
+            raise ValueError(
+                "Garmin authentication timed out. "
+                "Garmin is likely blocking this server's IP. "
+                "A residential proxy is required."
+            )
+        except Exception as e:
+            raise ValueError(f"Garmin authentication failed: {e}") from e
 
     token_dump = client.dumps()
     try:
