@@ -105,29 +105,33 @@ def fetch_streams(access_token: str, activity_id: str) -> dict:
     return {k: v["data"] for k, v in data.items() if isinstance(v, dict) and "data" in v}
 
 
-def fetch_hr_zones(access_token: str, activity_id: str) -> list[int] | None:
-    """Fetch HR zone distribution from Strava and return [z1%, z2%, z3%, z4%, z5%]."""
+def fetch_athlete_max_hr(access_token: str) -> int | None:
+    """Return the athlete's max heart rate from their Strava profile, or None if not set."""
     resp = httpx.get(
-        f"{STRAVA_API}/activities/{activity_id}/zones",
+        f"{STRAVA_API}/athlete",
         headers={"Authorization": f"Bearer {access_token}"},
         timeout=30,
     )
-    print(f"[zones] activity={activity_id} status={resp.status_code} body={resp.text[:500]}")
-    if resp.status_code in (404, 400):
-        return None
     resp.raise_for_status()
-    zones_data = resp.json()
-    hr_zone = next((z for z in zones_data if z.get("type") == "heartrate"), None)
-    if not hr_zone:
-        return None
-    buckets = hr_zone.get("distribution_buckets", [])
-    if not buckets:
-        return None
-    times = [b.get("time", 0) for b in buckets]
-    total = sum(times)
+    return resp.json().get("max_heartrate") or None
+
+
+def compute_hr_zones(hr_stream: list[int], max_hr: int = 185) -> list[int]:
+    """Return [z1%, z2%, z3%, z4%, z5%] as integers (sum to ~100)."""
+    thresholds = [0.60, 0.70, 0.80, 0.90, 1.01]
+    zones = [0, 0, 0, 0, 0]
+    for hr in hr_stream:
+        pct = hr / max_hr
+        for i, t in enumerate(thresholds):
+            if pct <= t:
+                zones[i] += 1
+                break
+        else:
+            zones[4] += 1
+    total = sum(zones)
     if total == 0:
-        return None
-    return [round(t * 100 / total) for t in times]
+        return [0, 0, 0, 0, 0]
+    return [round(z * 100 / total) for z in zones]
 
 
 # ── Matching ──────────────────────────────────────────────────────────────────
@@ -170,6 +174,9 @@ def sync_plan_activities(plan_id: int, user_id: int, db: Session) -> dict:
 
     activities = fetch_recent_activities(access_token, after_epoch=after_epoch)
 
+    max_hr = fetch_athlete_max_hr(access_token)
+    print(f"[strava sync] athlete max_hr={max_hr}")
+
     synced, skipped, errors = 0, 0, []
     for act in activities:
         if act.get("type") not in ("Run", "VirtualRun", "TrailRun"):
@@ -187,18 +194,14 @@ def sync_plan_activities(plan_id: int, user_id: int, db: Session) -> dict:
             skipped += 1
             continue
 
-        # Fetch streams and HR zones (best-effort)
+        # Fetch streams and compute HR zones (best-effort)
         streams = {}
         try:
             streams = fetch_streams(access_token, str(act["id"]))
+            if "heartrate" in streams and max_hr:
+                streams["hr_zones"] = compute_hr_zones(streams["heartrate"], max_hr)
         except Exception as e:
             errors.append(f"Streams fetch failed for activity {act['id']}: {e}")
-        try:
-            hr_zones = fetch_hr_zones(access_token, str(act["id"]))
-            if hr_zones:
-                streams["hr_zones"] = hr_zones
-        except Exception as e:
-            errors.append(f"HR zones fetch failed for activity {act['id']}: {e}")
 
         existing = db.query(WorkoutActivity).filter(WorkoutActivity.workout_id == workout.id).first()
         if not existing:
