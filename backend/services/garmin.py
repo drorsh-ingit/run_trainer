@@ -32,13 +32,22 @@ def decrypt_str(ciphertext: str) -> str:
 
 # ── Garmin auth ──────────────────────────────────────────────────────────────
 
+def _make_garth_client() -> garth.Client:
+    """Return a garth Client, routing through a proxy if GARMIN_PROXY_URL is set."""
+    if settings.garmin_proxy_url:
+        import httpx
+        session = httpx.Client(proxy=settings.garmin_proxy_url, timeout=30)
+        return garth.Client(session=session)
+    return garth.Client()
+
+
 def authenticate_garmin(username: str, password: str) -> tuple[str, str]:
     """
     Authenticate with Garmin SSO via garth.
     Returns (token_dump, display_name).
     Raises ValueError on bad credentials.
     """
-    client = garth.Client()
+    client = _make_garth_client()
     try:
         client.login(username, password)
     except Exception as e:
@@ -54,7 +63,7 @@ def authenticate_garmin(username: str, password: str) -> tuple[str, str]:
 
 
 def build_garth_client(token_dump: str) -> garth.Client:
-    client = garth.Client()
+    client = _make_garth_client()
     client.loads(token_dump)
     return client
 

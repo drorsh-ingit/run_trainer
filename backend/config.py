@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     secret_key: str = "change-me-in-production"
     jwt_algorithm: str = "HS256"
     frontend_url: str = "http://localhost:3000"
+    garmin_proxy_url: str = ""  # e.g. http://user:pass@host:port
 
     class Config:
         env_file = ".env"
