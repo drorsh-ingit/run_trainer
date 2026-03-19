@@ -3,7 +3,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from database import get_db
 from models.models import User
-from schemas import Token, UserCreate, UserOut
+from schemas import Token, UserCreate, UserOut, UserUpdate
 from services.auth import verify_password, hash_password, create_access_token, get_current_user
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -35,4 +35,13 @@ def login(form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get
 
 @router.get("/me", response_model=UserOut)
 def me(current_user: User = Depends(get_current_user)):
+    return current_user
+
+
+@router.patch("/me", response_model=UserOut)
+def update_me(body: UserUpdate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if body.max_hr is not None:
+        current_user.max_hr = body.max_hr
+    db.commit()
+    db.refresh(current_user)
     return current_user

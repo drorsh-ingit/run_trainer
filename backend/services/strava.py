@@ -152,6 +152,10 @@ def _best_match(candidates: list[PlannedWorkout], actual_km: float) -> PlannedWo
 # ── Sync ─────────────────────────────────────────────────────────────────────
 
 def sync_plan_activities(plan_id: int, user_id: int, db: Session) -> dict:
+    from models.models import User
+    user = db.query(User).filter(User.id == user_id).first()
+    user_max_hr = user.max_hr if user else None
+
     access_token = get_valid_token(user_id, db)
 
     workouts = (
@@ -174,8 +178,8 @@ def sync_plan_activities(plan_id: int, user_id: int, db: Session) -> dict:
 
     activities = fetch_recent_activities(access_token, after_epoch=after_epoch)
 
-    max_hr = fetch_athlete_max_hr(access_token)
-    print(f"[strava sync] athlete max_hr={max_hr}")
+    # Use user's configured max HR, fall back to Strava athlete profile
+    max_hr = user_max_hr or fetch_athlete_max_hr(access_token)
 
     synced, skipped, errors = 0, 0, []
     for act in activities:

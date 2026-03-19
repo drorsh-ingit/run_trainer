@@ -21,6 +21,9 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [maxHr, setMaxHr] = useState<string>("");
+  const [maxHrSaving, setMaxHrSaving] = useState(false);
+  const [maxHrMsg, setMaxHrMsg] = useState("");
 
   useEffect(() => {
     apiFetch("/plans/")
@@ -31,7 +34,27 @@ export default function DashboardPage() {
       .then(setPlans)
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
+
+    apiFetch("/auth/me")
+      .then(async res => res.ok ? res.json() : null)
+      .then(user => { if (user?.max_hr) setMaxHr(String(user.max_hr)); });
   }, []);
+
+  const saveMaxHr = async () => {
+    const val = parseInt(maxHr);
+    if (!val || val < 100 || val > 250) { setMaxHrMsg("Enter a value between 100 and 250"); return; }
+    setMaxHrSaving(true);
+    setMaxHrMsg("");
+    try {
+      const res = await apiFetch("/auth/me", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ max_hr: val }) });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setMaxHrMsg("Saved!");
+    } catch (e: unknown) {
+      setMaxHrMsg(e instanceof Error ? e.message : "Failed to save");
+    } finally {
+      setMaxHrSaving(false);
+    }
+  };
 
   const handleDelete = async (e: React.MouseEvent, planId: number) => {
     e.preventDefault(); // don't follow the card link
@@ -60,6 +83,26 @@ export default function DashboardPage() {
           >
             + New Plan
           </Link>
+        </div>
+
+        <div className="bg-white rounded-2xl border border-gray-200 p-5 mb-6 flex items-center gap-3">
+          <span className="text-sm text-gray-600 shrink-0">Max heart rate</span>
+          <input
+            type="number"
+            value={maxHr}
+            onChange={e => setMaxHr(e.target.value)}
+            placeholder="e.g. 190"
+            className="w-28 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          <span className="text-sm text-gray-400">bpm</span>
+          <button
+            onClick={saveMaxHr}
+            disabled={maxHrSaving}
+            className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium px-3 py-1.5 rounded-lg transition-colors"
+          >
+            {maxHrSaving ? "Saving…" : "Save"}
+          </button>
+          {maxHrMsg && <span className="text-sm text-gray-500">{maxHrMsg}</span>}
         </div>
 
         {loading && <p className="text-gray-500 text-sm">Loading…</p>}

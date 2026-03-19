@@ -11,6 +11,7 @@ class User(Base):
     username = Column(String, unique=True, nullable=False, index=True)
     hashed_password = Column(String, nullable=False)
     is_active = Column(Boolean, default=True)
+    max_hr = Column(Integer, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
 
     plans = relationship("TrainingPlan", back_populates="user")

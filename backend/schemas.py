@@ -86,8 +86,13 @@ class UserOut(BaseModel):
     id: int
     username: str
     is_active: bool
+    max_hr: Optional[int] = None
 
     model_config = {"from_attributes": True}
+
+
+class UserUpdate(BaseModel):
+    max_hr: Optional[int] = Field(None, ge=100, le=250)
 
 
 class Token(BaseModel):

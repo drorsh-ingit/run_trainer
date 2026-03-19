@@ -14,6 +14,7 @@ with engine.connect() as conn:
         "ALTER TABLE training_plans ADD COLUMN ai_model TEXT DEFAULT 'claude-sonnet-4-6'",
         "ALTER TABLE training_plans ADD COLUMN plan_type TEXT DEFAULT 'race'",
         "ALTER TABLE training_plans ADD COLUMN plan_duration_weeks INTEGER",
+        "ALTER TABLE users ADD COLUMN max_hr INTEGER",
     ]:
         try:
             conn.execute(text(stmt))
