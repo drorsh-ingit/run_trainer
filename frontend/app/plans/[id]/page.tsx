@@ -15,6 +15,8 @@ type WorkoutActivity = {
   average_pace_min_per_km: number | null;
   hr_zones: number[] | null;
   has_streams: boolean;
+  match_score: number | null;
+  match_comment: string | null;
 };
 
 type Workout = {
@@ -784,6 +786,18 @@ export default function PlanDetailPage() {
                               </span>
                             ))}
                           </span>
+                        )}
+                      </div>
+                    )}
+                    {w.activity?.match_score != null && (
+                      <div className="mt-2 flex items-start gap-2">
+                        <span className={`shrink-0 text-xs font-semibold px-1.5 py-0.5 rounded-full ${
+                          w.activity.match_score >= 90 ? "bg-green-100 text-green-700" :
+                          w.activity.match_score >= 70 ? "bg-yellow-100 text-yellow-700" :
+                          "bg-red-100 text-red-600"
+                        }`}>{w.activity.match_score}</span>
+                        {w.activity.match_comment && (
+                          <p className="text-xs text-gray-500 italic">{w.activity.match_comment}</p>
                         )}
                       </div>
                     )}

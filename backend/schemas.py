@@ -208,6 +208,8 @@ class ActivityOut(BaseModel):
     average_pace_min_per_km: Optional[float] = None
     hr_zones: Optional[List[int]] = None
     has_streams: bool = False
+    match_score: Optional[int] = None
+    match_comment: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
@@ -234,6 +236,8 @@ class ActivityOut(BaseModel):
             average_pace_min_per_km=pace,
             hr_zones=hr_zones,
             has_streams=bool(streams),
+            match_score=getattr(obj, "match_score", None),
+            match_comment=getattr(obj, "match_comment", None),
         )
 
 

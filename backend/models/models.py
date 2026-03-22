@@ -88,6 +88,8 @@ class WorkoutActivity(Base):
     average_speed_ms   = Column(Float, nullable=True)
     start_date         = Column(DateTime, nullable=True)
     streams_data       = Column(JSON, nullable=True)
+    match_score        = Column(Integer, nullable=True)   # 0–100
+    match_comment      = Column(Text, nullable=True)
     synced_at          = Column(DateTime, server_default=func.now())
 
     workout = relationship("PlannedWorkout", back_populates="activity")

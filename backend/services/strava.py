@@ -134,6 +134,35 @@ def compute_hr_zones(hr_stream: list[int], max_hr: int = 185) -> list[int]:
     return [round(z * 100 / total) for z in zones]
 
 
+# ── Match scoring ────────────────────────────────────────────────────────────
+
+def _score_match(workout: PlannedWorkout, actual_km: float, actual_pace: float | None) -> tuple[int, str]:
+    """Return (score 0-100, one-line coaching comment)."""
+    target_km = workout.target_distance_km
+
+    if not target_km:
+        return 75, f"Logged {actual_km:.1f} km — no target distance set for this workout."
+
+    ratio = actual_km / target_km
+    pace_str = (
+        f" at {int(actual_pace)}:{int((actual_pace % 1) * 60):02d} min/km"
+        if actual_pace else ""
+    )
+
+    if ratio >= 1.05:
+        score, comment = 95, f"Went beyond the plan — {actual_km:.1f} km vs {target_km:.1f} km target{pace_str}. Consider saving energy on non-key sessions."
+    elif ratio >= 0.98:
+        score, comment = 100, f"Nailed it — {actual_km:.1f} km as planned{pace_str}."
+    elif ratio >= 0.92:
+        score, comment = 85, f"Almost there — {actual_km:.1f} of {target_km:.1f} km{pace_str}. Solid effort."
+    elif ratio >= 0.80:
+        score, comment = 65, f"Cut short — {actual_km:.1f} of {target_km:.1f} km{pace_str}. Check how you're recovering."
+    else:
+        score, comment = 40, f"Well short of target — {actual_km:.1f} of {target_km:.1f} km{pace_str}. Listen to your body and adjust if needed."
+
+    return score, comment
+
+
 # ── Matching ──────────────────────────────────────────────────────────────────
 
 def _best_match(candidates: list[PlannedWorkout], actual_km: float) -> PlannedWorkout | None:
@@ -212,14 +241,21 @@ def sync_plan_activities(plan_id: int, user_id: int, db: Session) -> dict:
             existing = WorkoutActivity(workout_id=workout.id, plan_id=plan_id)
             db.add(existing)
 
+        actual_km = round(act["distance"] / 1000, 2)
+        avg_speed = act.get("average_speed")
+        actual_pace = round(1000 / (avg_speed * 60), 2) if avg_speed and avg_speed > 0 else None
+        score, comment = _score_match(workout, actual_km, actual_pace)
+
         existing.strava_activity_id = str(act["id"])
         existing.name = act.get("name")
-        existing.actual_distance_km = round(act["distance"] / 1000, 2)
+        existing.actual_distance_km = actual_km
         existing.actual_duration_sec = act.get("moving_time")
         existing.average_hr = act.get("average_heartrate")
-        existing.average_speed_ms = act.get("average_speed")
+        existing.average_speed_ms = avg_speed
         existing.start_date = datetime.fromisoformat(act["start_date_local"])
         existing.streams_data = streams or None
+        existing.match_score = score
+        existing.match_comment = comment
 
         workout.completed = True
         workout.strava_activity_id = str(act["id"])

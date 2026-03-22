@@ -14,6 +14,8 @@ _migrations = [
     "ALTER TABLE training_plans ADD COLUMN IF NOT EXISTS plan_type TEXT DEFAULT 'race'",
     "ALTER TABLE training_plans ADD COLUMN IF NOT EXISTS plan_duration_weeks INTEGER",
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS max_hr INTEGER",
+    "ALTER TABLE workout_activities ADD COLUMN IF NOT EXISTS match_score INTEGER",
+    "ALTER TABLE workout_activities ADD COLUMN IF NOT EXISTS match_comment TEXT",
 ]
 for stmt in _migrations:
     with engine.connect() as conn:
