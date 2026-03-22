@@ -8,7 +8,7 @@ from cryptography.fernet import Fernet
 from sqlalchemy.orm import Session
 
 from config import settings
-from models.models import GarminSession, PlannedWorkout, TrainingPlan, WorkoutActivity
+from models.models import GarminSession, IgnoredActivity, PlannedWorkout, TrainingPlan, WorkoutActivity
 
 
 # ── Token encryption ────────────────────────────────────────────────────────
@@ -438,6 +438,12 @@ def sync_plan_activities(plan_id: int, user_id: int, db: Session) -> dict:
                for k in ("running", "trail", "track"))
         and (a.get("startTimeLocal") or "")[:10]
     ]
+
+    ignored_ids = {
+        r.activity_id for r in
+        db.query(IgnoredActivity).filter(IgnoredActivity.plan_id == plan_id).all()
+    }
+    run_activities = [a for a in run_activities if str(a.get("activityId")) not in ignored_ids]
 
     # Clear all previous activity records for this plan (matched and unmatched)
     db.query(WorkoutActivity).filter(WorkoutActivity.plan_id == plan_id).delete(synchronize_session=False)

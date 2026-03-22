@@ -6,7 +6,7 @@ import httpx
 from sqlalchemy.orm import Session
 
 from config import settings
-from models.models import PlannedWorkout, StravaToken, WorkoutActivity
+from models.models import IgnoredActivity, PlannedWorkout, StravaToken, WorkoutActivity
 
 STRAVA_TOKEN_URL = "https://www.strava.com/oauth/token"
 STRAVA_AUTH_URL = "https://www.strava.com/oauth/authorize"
@@ -210,8 +210,17 @@ def sync_plan_activities(plan_id: int, user_id: int, db: Session) -> dict:
     # Use user's configured max HR, fall back to Strava athlete profile
     max_hr = user_max_hr or fetch_athlete_max_hr(access_token)
 
+    ignored_ids = {
+        r.activity_id for r in
+        db.query(IgnoredActivity).filter(IgnoredActivity.plan_id == plan_id).all()
+    }
+
     synced, skipped, errors = 0, 0, []
     for act in activities:
+        if str(act.get("id")) in ignored_ids:
+            skipped += 1
+            continue
+
         if act.get("type") not in ("Run", "VirtualRun", "TrailRun"):
             skipped += 1
             continue

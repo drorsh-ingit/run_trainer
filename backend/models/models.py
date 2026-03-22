@@ -107,6 +107,16 @@ class StravaToken(Base):
     athlete_name = Column(String)
 
 
+class IgnoredActivity(Base):
+    __tablename__ = "ignored_activities"
+
+    id          = Column(Integer, primary_key=True)
+    plan_id     = Column(Integer, ForeignKey("training_plans.id"), nullable=False, index=True)
+    user_id     = Column(Integer, ForeignKey("users.id"), nullable=False)
+    activity_id = Column(String, nullable=False)   # strava_activity_id string
+    ignored_at  = Column(DateTime, server_default=func.now())
+
+
 class GarminSession(Base):
     __tablename__ = "garmin_sessions"
 

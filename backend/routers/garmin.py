@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from database import get_db
-from models.models import GarminSession, PlannedWorkout, TrainingPlan, User, WorkoutActivity
+from models.models import GarminSession, IgnoredActivity, PlannedWorkout, TrainingPlan, User, WorkoutActivity
 from services.auth import get_current_user
 from services.claude import generate_steps_for_workouts
 from services.garmin import (
@@ -267,6 +267,7 @@ def plan_activities(
             if "hr_zones" in r.streams_data:
                 hr_zones = r.streams_data["hr_zones"]
         result.append({
+            "strava_activity_id": r.strava_activity_id,
             "date": r.start_date.strftime("%Y-%m-%d"),
             "name": r.name,
             "actual_distance_km": r.actual_distance_km,
@@ -276,6 +277,50 @@ def plan_activities(
             "hr_zones": hr_zones,
         })
     return result
+
+
+# ── /plans/{plan_id}/activities/{activity_id} (ignore) ───────────────────────
+
+@plans_router.delete("/{plan_id}/activities/{activity_id}", status_code=204)
+def ignore_activity(
+    plan_id: int,
+    activity_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Discard a synced activity and remember it so it won't be pulled again."""
+    plan = db.query(TrainingPlan).filter(TrainingPlan.id == plan_id).first()
+    if not plan or plan.user_id != current_user.id:
+        raise HTTPException(404, "Plan not found or not authorized")
+
+    row = (
+        db.query(WorkoutActivity)
+        .filter(
+            WorkoutActivity.strava_activity_id == activity_id,
+            (WorkoutActivity.plan_id == plan_id) |
+            (WorkoutActivity.workout_id.in_(
+                db.query(PlannedWorkout.id).filter(PlannedWorkout.plan_id == plan_id)
+            ))
+        )
+        .first()
+    )
+    if row:
+        if row.workout_id:
+            workout = db.query(PlannedWorkout).filter(PlannedWorkout.id == row.workout_id).first()
+            if workout:
+                workout.completed = False
+                workout.strava_activity_id = None
+        db.delete(row)
+
+    # Record the ignore so future syncs skip this activity
+    already = db.query(IgnoredActivity).filter(
+        IgnoredActivity.plan_id == plan_id,
+        IgnoredActivity.activity_id == activity_id,
+    ).first()
+    if not already:
+        db.add(IgnoredActivity(plan_id=plan_id, user_id=current_user.id, activity_id=activity_id))
+
+    db.commit()
 
 
 # ── /plans/{plan_id}/garmin-sync ──────────────────────────────────────────────

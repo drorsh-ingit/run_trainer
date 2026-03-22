@@ -397,6 +397,13 @@ export default function PlanDetailPage() {
     }
   };
 
+  const handleIgnoreActivity = useCallback(async (activityId: string) => {
+    const res = await apiFetch(`/plans/${id}/activities/${activityId}`, { method: "DELETE" });
+    if (!res.ok) return;
+    const planRes = await apiFetch(`/plans/${id}`);
+    if (planRes.ok) setPlan(await planRes.json());
+  }, [id]);
+
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
     const text = input.trim();
@@ -800,6 +807,15 @@ export default function PlanDetailPage() {
                           <p className="text-xs text-gray-500 italic">{w.activity.match_comment}</p>
                         )}
                       </div>
+                    )}
+                    {w.activity && (
+                      <button
+                        onClick={() => handleIgnoreActivity(w.activity!.strava_activity_id)}
+                        className="mt-1.5 text-[11px] text-gray-400 hover:text-red-500 transition-colors"
+                        title="Discard this activity and don't pull it again"
+                      >
+                        ✕ ignore activity
+                      </button>
                     )}
                   </div>
                 </div>

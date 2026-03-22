@@ -8,6 +8,7 @@ import Nav from "../components/Nav";
 import { apiFetch, useRequireAuth } from "../hooks/useAuth";
 
 type ActivityEntry = {
+  strava_activity_id: string;
   date: string;
   name: string | null;
   actual_distance_km: number | null;
@@ -18,6 +19,7 @@ type ActivityEntry = {
 };
 
 type WorkoutActivity = {
+  strava_activity_id?: string;
   actual_distance_km: number | null;
   actual_duration_sec: number | null;
   average_hr: number | null;
@@ -221,7 +223,7 @@ function WorkoutTooltip({ workout, cellRef }: { workout: Workout; cellRef: React
   );
 }
 
-function WorkoutCell({ workout, isCurrentMonth }: { workout: Workout; isCurrentMonth: boolean }) {
+function WorkoutCell({ workout, isCurrentMonth, onIgnore }: { workout: Workout; isCurrentMonth: boolean; onIgnore?: () => void }) {
   const [hovered, setHovered] = useState(false);
   const cellRef = useRef<HTMLDivElement>(null);
   const isRace = workout.workout_type === "race";
@@ -294,6 +296,13 @@ function WorkoutCell({ workout, isCurrentMonth }: { workout: Workout; isCurrentM
         )}
       </div>
       {hovered && <WorkoutTooltip workout={workout} cellRef={cellRef} />}
+      {hovered && workout.completed && workout.activity?.strava_activity_id && onIgnore && (
+        <button
+          onMouseDown={(e) => { e.stopPropagation(); onIgnore(); }}
+          className="absolute top-0.5 right-0.5 text-[10px] text-gray-400 hover:text-red-500 bg-white rounded px-0.5 leading-tight z-10"
+          title="Ignore this activity"
+        >✕</button>
+      )}
     </div>
   );
 }
@@ -337,7 +346,7 @@ function ActivityTooltip({ activity, cellRef }: { activity: ActivityEntry; cellR
   );
 }
 
-function ActivityCell({ activity, isCurrentMonth }: { activity: ActivityEntry; isCurrentMonth: boolean }) {
+function ActivityCell({ activity, isCurrentMonth, onIgnore }: { activity: ActivityEntry; isCurrentMonth: boolean; onIgnore?: () => void }) {
   const [hovered, setHovered] = useState(false);
   const cellRef = useRef<HTMLDivElement>(null);
 
@@ -355,6 +364,13 @@ function ActivityCell({ activity, isCurrentMonth }: { activity: ActivityEntry; i
         )}
       </div>
       {hovered && <ActivityTooltip activity={activity} cellRef={cellRef} />}
+      {hovered && onIgnore && (
+        <button
+          onMouseDown={(e) => { e.stopPropagation(); onIgnore(); }}
+          className="absolute top-0.5 right-0.5 text-[10px] text-gray-400 hover:text-red-500 bg-white rounded px-0.5 leading-tight z-10"
+          title="Ignore this activity"
+        >✕</button>
+      )}
     </div>
   );
 }
@@ -366,6 +382,7 @@ function CalendarPage() {
   const planId = searchParams.get("plan_id");
 
   const [plan, setPlan] = useState<Plan | null>(null);
+  const [resolvedPlanId, setResolvedPlanId] = useState<string | null>(null);
   const [activities, setActivities] = useState<Map<string, ActivityEntry[]>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -373,6 +390,29 @@ function CalendarPage() {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), 1);
   });
+
+  const reloadActivities = async (id: string) => {
+    const [planRes, actRes] = await Promise.all([
+      apiFetch(`/plans/${id}`),
+      apiFetch(`/plans/${id}/activities`),
+    ]);
+    if (planRes.ok) setPlan(await planRes.json());
+    if (actRes.ok) {
+      const acts: ActivityEntry[] = await actRes.json();
+      const map = new Map<string, ActivityEntry[]>();
+      for (const a of acts) {
+        if (!map.has(a.date)) map.set(a.date, []);
+        map.get(a.date)!.push(a);
+      }
+      setActivities(map);
+    }
+  };
+
+  const handleIgnoreActivity = async (activityId: string) => {
+    if (!resolvedPlanId) return;
+    const res = await apiFetch(`/plans/${resolvedPlanId}/activities/${activityId}`, { method: "DELETE" });
+    if (res.ok) reloadActivities(resolvedPlanId);
+  };
 
   useEffect(() => {
     async function load() {
@@ -385,6 +425,7 @@ function CalendarPage() {
           if (plans.length === 0) throw new Error("No plans found");
           id = String(plans[0].id);
         }
+        setResolvedPlanId(id);
         const res = await apiFetch(`/plans/${id}`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data: Plan = await res.json();
@@ -546,13 +587,22 @@ function CalendarPage() {
                   </span>
 
                   {workout && (
-                    <WorkoutCell workout={workout} isCurrentMonth={isCurrentMonth} />
+                    <WorkoutCell
+                      workout={workout}
+                      isCurrentMonth={isCurrentMonth}
+                      onIgnore={workout.activity?.strava_activity_id ? () => handleIgnoreActivity(workout.activity!.strava_activity_id!) : undefined}
+                    />
                   )}
                   {!workout && isGoalDate && goalDateKey && (
                     <RaceDayMarker goalDate={goalDateKey} />
                   )}
                   {dayActivities.map((act, j) => (
-                    <ActivityCell key={j} activity={act} isCurrentMonth={isCurrentMonth} />
+                    <ActivityCell
+                      key={j}
+                      activity={act}
+                      isCurrentMonth={isCurrentMonth}
+                      onIgnore={() => handleIgnoreActivity(act.strava_activity_id)}
+                    />
                   ))}
                 </div>
               );
