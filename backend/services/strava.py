@@ -237,6 +237,12 @@ def sync_plan_activities(plan_id: int, user_id: int, db: Session) -> dict:
             errors.append(f"Streams fetch failed for activity {act['id']}: {e}")
 
         existing = db.query(WorkoutActivity).filter(WorkoutActivity.workout_id == workout.id).first()
+
+        # Skip already-processed activities — same Strava ID and score already computed
+        if existing and existing.strava_activity_id == str(act["id"]) and existing.match_score is not None:
+            skipped += 1
+            continue
+
         if not existing:
             existing = WorkoutActivity(workout_id=workout.id, plan_id=plan_id)
             db.add(existing)
