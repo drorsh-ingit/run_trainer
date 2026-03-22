@@ -811,10 +811,10 @@ export default function PlanDetailPage() {
                     {w.activity && (
                       <button
                         onClick={() => handleIgnoreActivity(w.activity!.strava_activity_id)}
-                        className="mt-1.5 text-[11px] text-gray-400 hover:text-red-500 transition-colors"
+                        className="text-[11px] text-gray-300 hover:text-gray-500 transition-colors"
                         title="Discard this activity and don't pull it again"
                       >
-                        ✕ ignore activity
+                        ignore
                       </button>
                     )}
                   </div>

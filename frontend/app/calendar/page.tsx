@@ -136,7 +136,7 @@ function formatDuration(secs: number): string {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
-function WorkoutTooltip({ workout, cellRef }: { workout: Workout; cellRef: React.RefObject<HTMLDivElement | null> }) {
+function WorkoutTooltip({ workout, cellRef, onIgnore, onMouseEnter, onMouseLeave }: { workout: Workout; cellRef: React.RefObject<HTMLDivElement | null>; onIgnore?: () => void; onMouseEnter?: () => void; onMouseLeave?: () => void }) {
   const tooltipRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
 
@@ -171,7 +171,9 @@ function WorkoutTooltip({ workout, cellRef }: { workout: Workout; cellRef: React
     <div
       ref={tooltipRef}
       style={pos ? { position: "fixed", top: pos.top - window.scrollY, left: pos.left - window.scrollX, zIndex: 50 } : { visibility: "hidden", position: "fixed" }}
-      className={`w-64 rounded-xl border shadow-lg p-3 text-xs pointer-events-none ${colorClass}`}
+      className={`w-64 rounded-xl border shadow-lg p-3 text-xs ${colorClass}`}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
     >
       <div className="flex items-center justify-between mb-1.5">
         <span className="font-semibold text-sm capitalize">
@@ -213,6 +215,11 @@ function WorkoutTooltip({ workout, cellRef }: { workout: Workout; cellRef: React
           {workout.activity.match_comment && (
             <div className="mt-1 pt-1 border-t border-current border-opacity-20 italic opacity-80">{workout.activity.match_comment}</div>
           )}
+          {onIgnore && (
+            <button onClick={onIgnore} className="mt-1.5 opacity-40 hover:opacity-80 transition-opacity text-[10px]">
+              ignore activity
+            </button>
+          )}
         </div>
       )}
 
@@ -226,15 +233,24 @@ function WorkoutTooltip({ workout, cellRef }: { workout: Workout; cellRef: React
 function WorkoutCell({ workout, isCurrentMonth, onIgnore }: { workout: Workout; isCurrentMonth: boolean; onIgnore?: () => void }) {
   const [hovered, setHovered] = useState(false);
   const cellRef = useRef<HTMLDivElement>(null);
+  const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isRace = workout.workout_type === "race";
+
+  const showTooltip = () => {
+    if (hideTimer.current) clearTimeout(hideTimer.current);
+    setHovered(true);
+  };
+  const hideTooltip = () => {
+    hideTimer.current = setTimeout(() => setHovered(false), 150);
+  };
 
   if (isRace) {
     return (
       <div
         ref={cellRef}
         className="relative"
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
+        onMouseEnter={showTooltip}
+        onMouseLeave={hideTooltip}
       >
         <div className={`rounded-lg px-2 py-1.5 border-2 border-yellow-400 bg-gradient-to-br from-yellow-50 to-amber-100 text-yellow-900 cursor-default transition-shadow ${!isCurrentMonth ? "opacity-50" : ""} ${hovered ? "shadow-lg" : "shadow-sm"}`}>
           <div className="text-base leading-none mb-1">🏅</div>
@@ -243,7 +259,7 @@ function WorkoutCell({ workout, isCurrentMonth, onIgnore }: { workout: Workout; 
             <div className="text-[10px] font-semibold mt-0.5 opacity-80">{workout.target_distance_km} km</div>
           )}
         </div>
-        {hovered && <WorkoutTooltip workout={workout} cellRef={cellRef} />}
+        {hovered && <WorkoutTooltip workout={workout} cellRef={cellRef} onMouseEnter={showTooltip} onMouseLeave={hideTooltip} />}
       </div>
     );
   }
@@ -252,8 +268,8 @@ function WorkoutCell({ workout, isCurrentMonth, onIgnore }: { workout: Workout; 
     <div
       ref={cellRef}
       className="relative"
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      onMouseEnter={showTooltip}
+      onMouseLeave={hideTooltip}
     >
       <div
         className={`rounded-md px-1.5 py-1 border text-xs cursor-default transition-shadow ${
@@ -295,19 +311,20 @@ function WorkoutCell({ workout, isCurrentMonth, onIgnore }: { workout: Workout; 
           <div className="text-[10px] opacity-50 italic leading-tight mt-0.5">optional</div>
         )}
       </div>
-      {hovered && <WorkoutTooltip workout={workout} cellRef={cellRef} />}
-      {hovered && workout.completed && workout.activity?.strava_activity_id && onIgnore && (
-        <button
-          onMouseDown={(e) => { e.stopPropagation(); onIgnore(); }}
-          className="absolute top-0.5 right-0.5 text-[10px] text-gray-400 hover:text-red-500 bg-white rounded px-0.5 leading-tight z-10"
-          title="Ignore this activity"
-        >✕</button>
+      {hovered && (
+        <WorkoutTooltip
+          workout={workout}
+          cellRef={cellRef}
+          onIgnore={workout.activity?.strava_activity_id ? onIgnore : undefined}
+          onMouseEnter={showTooltip}
+          onMouseLeave={hideTooltip}
+        />
       )}
     </div>
   );
 }
 
-function ActivityTooltip({ activity, cellRef }: { activity: ActivityEntry; cellRef: React.RefObject<HTMLDivElement | null> }) {
+function ActivityTooltip({ activity, cellRef, onIgnore, onMouseEnter, onMouseLeave }: { activity: ActivityEntry; cellRef: React.RefObject<HTMLDivElement | null>; onIgnore?: () => void; onMouseEnter?: () => void; onMouseLeave?: () => void }) {
   const tooltipRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
   const pace = activity.average_pace_min_per_km;
@@ -331,7 +348,9 @@ function ActivityTooltip({ activity, cellRef }: { activity: ActivityEntry; cellR
     <div
       ref={tooltipRef}
       style={pos ? { position: "fixed", top: pos.top - window.scrollY, left: pos.left - window.scrollX, zIndex: 50 } : { visibility: "hidden", position: "fixed" }}
-      className="w-52 rounded-xl border border-teal-200 bg-teal-50 text-teal-900 shadow-lg p-3 text-xs pointer-events-none space-y-1"
+      className="w-52 rounded-xl border border-teal-200 bg-teal-50 text-teal-900 shadow-lg p-3 text-xs space-y-1"
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
     >
       <div className="font-semibold text-sm mb-1">{activity.name ?? "Run"}</div>
       {activity.actual_distance_km != null && <div>{activity.actual_distance_km} km</div>}
@@ -342,6 +361,11 @@ function ActivityTooltip({ activity, cellRef }: { activity: ActivityEntry; cellR
         <div>{Math.floor(pace)}:{String(Math.round((pace % 1) * 60)).padStart(2, "0")}/km avg pace</div>
       )}
       {activity.average_hr != null && <div>{Math.round(activity.average_hr)} bpm avg HR</div>}
+      {onIgnore && (
+        <button onClick={onIgnore} className="pt-1 opacity-40 hover:opacity-80 transition-opacity text-[10px] block">
+          ignore activity
+        </button>
+      )}
     </div>
   );
 }
@@ -349,13 +373,22 @@ function ActivityTooltip({ activity, cellRef }: { activity: ActivityEntry; cellR
 function ActivityCell({ activity, isCurrentMonth, onIgnore }: { activity: ActivityEntry; isCurrentMonth: boolean; onIgnore?: () => void }) {
   const [hovered, setHovered] = useState(false);
   const cellRef = useRef<HTMLDivElement>(null);
+  const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showTooltip = () => {
+    if (hideTimer.current) clearTimeout(hideTimer.current);
+    setHovered(true);
+  };
+  const hideTooltip = () => {
+    hideTimer.current = setTimeout(() => setHovered(false), 150);
+  };
 
   return (
     <div
       ref={cellRef}
       className="relative"
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      onMouseEnter={showTooltip}
+      onMouseLeave={hideTooltip}
     >
       <div className={`rounded-md px-1.5 py-1 border text-xs cursor-default bg-teal-50 border-teal-300 text-teal-800 ${!isCurrentMonth ? "opacity-50" : ""} ${hovered ? "shadow-md" : ""}`}>
         <div className="font-semibold leading-tight">▶ run</div>
@@ -363,13 +396,14 @@ function ActivityCell({ activity, isCurrentMonth, onIgnore }: { activity: Activi
           <div className="text-[10px] font-medium mt-0.5">{activity.actual_distance_km} km</div>
         )}
       </div>
-      {hovered && <ActivityTooltip activity={activity} cellRef={cellRef} />}
-      {hovered && onIgnore && (
-        <button
-          onMouseDown={(e) => { e.stopPropagation(); onIgnore(); }}
-          className="absolute top-0.5 right-0.5 text-[10px] text-gray-400 hover:text-red-500 bg-white rounded px-0.5 leading-tight z-10"
-          title="Ignore this activity"
-        >✕</button>
+      {hovered && (
+        <ActivityTooltip
+          activity={activity}
+          cellRef={cellRef}
+          onIgnore={onIgnore}
+          onMouseEnter={showTooltip}
+          onMouseLeave={hideTooltip}
+        />
       )}
     </div>
   );
