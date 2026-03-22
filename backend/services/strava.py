@@ -244,7 +244,22 @@ def sync_plan_activities(plan_id: int, user_id: int, db: Session) -> dict:
         actual_km = round(act["distance"] / 1000, 2)
         avg_speed = act.get("average_speed")
         actual_pace = round(1000 / (avg_speed * 60), 2) if avg_speed and avg_speed > 0 else None
-        score, comment = _score_match(workout, actual_km, actual_pace)
+        hr_zones = streams.get("hr_zones") if streams else None
+        try:
+            from services.claude import generate_match_analysis
+            score, comment = generate_match_analysis(
+                workout_type=workout.workout_type,
+                description=workout.description or "",
+                target_distance_km=workout.target_distance_km,
+                target_duration_min=workout.target_duration_minutes,
+                actual_distance_km=actual_km,
+                actual_duration_sec=act.get("moving_time"),
+                actual_pace_min_per_km=actual_pace,
+                average_hr=act.get("average_heartrate"),
+                hr_zones=hr_zones,
+            )
+        except Exception:
+            score, comment = _score_match(workout, actual_km, actual_pace)
 
         existing.strava_activity_id = str(act["id"])
         existing.name = act.get("name")

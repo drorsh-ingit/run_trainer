@@ -636,3 +636,80 @@ def generate_steps_for_workouts(workouts: list[dict]) -> dict[int, list[dict]]:
         raise ValueError(f"Claude returned invalid steps JSON: {e}\nRaw: {raw[:500]}")
 
     return {int(k): v for k, v in data.items()}
+
+
+_MATCH_SYSTEM = """You are a running coach analyzing how well an athlete executed a planned workout.
+
+Given the planned workout and actual activity data, return JSON with exactly two fields:
+{
+  "score": <integer 0-100, representing % match quality>,
+  "comment": "<1-2 sentences of coaching feedback>"
+}
+
+Scoring guidelines:
+- Consider distance completion, pace appropriateness for the workout type, HR zone alignment, and duration
+- For easy/recovery runs: HR zone compliance matters most (should be low Z1-Z2); going too fast is a negative
+- For tempo/threshold runs: pace consistency and hitting target distance matter most
+- For long runs: distance completion and keeping HR aerobic (Z2-Z3) matter most
+- For intervals: distance completion and effort level matter most
+- 90-100: excellent execution
+- 75-89: good, minor deviations
+- 60-74: acceptable, some issues
+- 40-59: significant deviation from plan
+- <40: major issues
+
+Comment tone: concise, supportive, specific to the data. Mention actual numbers."""
+
+
+def generate_match_analysis(
+    workout_type: str,
+    description: str,
+    target_distance_km: float | None,
+    target_duration_min: int | None,
+    actual_distance_km: float,
+    actual_duration_sec: int | None,
+    actual_pace_min_per_km: float | None,
+    average_hr: float | None,
+    hr_zones: list[int] | None,
+) -> tuple[int, str]:
+    """Use Claude to score an activity against its planned workout."""
+    client = _get_client()
+
+    def fmt_pace(p):
+        if p is None:
+            return "unknown"
+        return f"{int(p)}:{int((p % 1) * 60):02d} min/km"
+
+    def fmt_zones(z):
+        if not z:
+            return "unknown"
+        labels = ["Z1", "Z2", "Z3", "Z4", "Z5"]
+        return ", ".join(f"{l}:{v}%" for l, v in zip(labels, z))
+
+    actual_duration_min = round(actual_duration_sec / 60) if actual_duration_sec else None
+
+    prompt = f"""Planned workout:
+- Type: {workout_type}
+- Description: {description}
+- Target distance: {target_distance_km or "not specified"} km
+- Target duration: {target_duration_min or "not specified"} min
+
+Actual activity:
+- Distance: {actual_distance_km} km
+- Duration: {actual_duration_min or "unknown"} min
+- Pace: {fmt_pace(actual_pace_min_per_km)}
+- Avg HR: {round(average_hr) if average_hr else "unknown"} bpm
+- HR zones: {fmt_zones(hr_zones)}"""
+
+    response = client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=200,
+        system=_MATCH_SYSTEM,
+        messages=[{"role": "user", "content": prompt}],
+    )
+
+    try:
+        data = json.loads(_extract_json(response.content[0].text))
+        return int(data["score"]), str(data["comment"])
+    except Exception:
+        return 75, f"Completed {actual_distance_km} km."
