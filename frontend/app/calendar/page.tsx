@@ -23,6 +23,8 @@ type WorkoutActivity = {
   average_hr: number | null;
   average_pace_min_per_km: number | null;
   hr_zones: number[] | null;
+  match_score: number | null;
+  match_comment: string | null;
 };
 
 type Workout = {
@@ -206,6 +208,9 @@ function WorkoutTooltip({ workout, cellRef }: { workout: Workout; cellRef: React
           {workout.activity.average_hr != null && (
             <div>{Math.round(workout.activity.average_hr)} bpm avg HR</div>
           )}
+          {workout.activity.match_comment && (
+            <div className="mt-1 pt-1 border-t border-current border-opacity-20 italic opacity-80">{workout.activity.match_comment}</div>
+          )}
         </div>
       )}
 
@@ -262,6 +267,13 @@ function WorkoutCell({ workout, isCurrentMonth }: { workout: Workout; isCurrentM
           {workout.workout_type.replace(/_/g, " ")}
         </div>
         <div className="flex gap-1.5 mt-0.5 flex-wrap">
+          {workout.completed && workout.activity?.match_score != null && (
+            <span className={`text-[10px] font-semibold ${
+              workout.activity.match_score >= 90 ? "text-green-600" :
+              workout.activity.match_score >= 70 ? "text-yellow-600" :
+              "text-red-500"
+            }`}>{workout.activity.match_score}%</span>
+          )}
           {workout.completed && workout.activity?.actual_distance_km != null ? (
             <span className="text-[10px] font-medium text-green-700">
               {workout.activity.actual_distance_km} km

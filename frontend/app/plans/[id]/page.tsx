@@ -795,7 +795,7 @@ export default function PlanDetailPage() {
                           w.activity.match_score >= 90 ? "bg-green-100 text-green-700" :
                           w.activity.match_score >= 70 ? "bg-yellow-100 text-yellow-700" :
                           "bg-red-100 text-red-600"
-                        }`}>{w.activity.match_score}</span>
+                        }`}>{w.activity.match_score}%</span>
                         {w.activity.match_comment && (
                           <p className="text-xs text-gray-500 italic">{w.activity.match_comment}</p>
                         )}
