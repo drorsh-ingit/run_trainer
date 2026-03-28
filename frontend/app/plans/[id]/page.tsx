@@ -431,8 +431,8 @@ export default function PlanDetailPage() {
       <div className="max-w-4xl mx-auto px-4 py-10 space-y-6">
 
         {/* Header */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 sticky top-14 z-20">
-          <div className="flex flex-col gap-3">
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+          <div className="flex flex-col gap-3 sticky top-14 z-20 bg-white -mx-6 px-6 py-4 rounded-t-2xl">
             <div className="flex items-center gap-4 flex-wrap">
               <Link
                 href={`/calendar?plan_id=${plan.id}`}
@@ -604,7 +604,6 @@ export default function PlanDetailPage() {
                 : `${plan.goal_distance} km — ${plan.goal_date}`}
             </h1>
           </div>
-        </div>
 
         {/* Description */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
@@ -838,6 +837,7 @@ export default function PlanDetailPage() {
               </button>
             </form>
           </div>
+        </div>
 
       </div>
     </div>
