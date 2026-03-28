@@ -431,8 +431,7 @@ export default function PlanDetailPage() {
       <div className="max-w-4xl mx-auto px-4 py-10 space-y-6">
 
         {/* Header */}
-        <div>
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-200 px-6 py-4 sticky top-14 z-20">
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 px-6 py-4 sticky top-14 z-20">
             <div className="flex flex-col gap-2">
             <div className="flex items-center gap-4 flex-wrap">
               <Link
@@ -837,7 +836,6 @@ export default function PlanDetailPage() {
               </button>
             </form>
           </div>
-        </div>
 
       </div>
     </div>
