@@ -332,6 +332,18 @@ def get_plan(plan_id: int, db: Session = Depends(get_db), current_user: User = D
     return plan
 
 
+@router.post("/{plan_id}/rescore")
+def rescore_plan(plan_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    plan = db.query(TrainingPlan).filter(TrainingPlan.id == plan_id).first()
+    if not plan:
+        raise HTTPException(status_code=404, detail="Plan not found")
+    if not _is_authorized(plan, current_user):
+        raise HTTPException(status_code=403, detail="Not authorized")
+    from services.strava import rescore_plan_activities
+    count = rescore_plan_activities(plan_id, current_user.id, db)
+    return {"rescored": count}
+
+
 @router.delete("/{plan_id}", status_code=204)
 def delete_plan(plan_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     plan = db.query(TrainingPlan).filter(TrainingPlan.id == plan_id).first()

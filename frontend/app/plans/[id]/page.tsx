@@ -134,6 +134,7 @@ export default function PlanDetailPage() {
   // Activity sync state
   const [activitySyncing, setActivitySyncing] = useState(false);
   const [activitySyncResult, setActivitySyncResult] = useState("");
+  const [rescoring, setRescoring] = useState(false);
 
   // Chat state
   const [messages, setMessages] = useState<ChatMsg[]>([]);
@@ -313,6 +314,24 @@ export default function PlanDetailPage() {
       setActivitySyncResult("Pull failed: network error");
     } finally {
       setActivitySyncing(false);
+    }
+  };
+
+  const handleRescore = async () => {
+    setShowPullMenu(false);
+    setRescoring(true);
+    setActivitySyncResult("Recalculating scores…");
+    try {
+      const res = await apiFetch(`/plans/${id}/rescore`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) { setActivitySyncResult(data.detail ?? "Rescore failed"); return; }
+      setActivitySyncResult(`Rescored ${data.rescored} activit${data.rescored !== 1 ? "ies" : "y"}`);
+      const planRes = await apiFetch(`/plans/${id}`);
+      if (planRes.ok) setPlan(await planRes.json());
+    } catch {
+      setActivitySyncResult("Rescore failed: network error");
+    } finally {
+      setRescoring(false);
     }
   };
 
@@ -567,6 +586,16 @@ export default function PlanDetailPage() {
                         Connect Strava…
                       </button>
                     )}
+                    {/* Recalculate scores */}
+                    <div className="border-t border-gray-100 mt-1 pt-1">
+                      <button
+                        onClick={handleRescore}
+                        disabled={rescoring}
+                        className="w-full text-left px-4 py-2 hover:bg-gray-50 text-gray-800 disabled:text-gray-300"
+                      >
+                        {rescoring ? "Recalculating…" : "Recalculate scores"}
+                      </button>
+                    </div>
                     {/* Disconnect options */}
                     {stravaStatus?.connected && (
                       <div className="border-t border-gray-100 mt-1 pt-1">
