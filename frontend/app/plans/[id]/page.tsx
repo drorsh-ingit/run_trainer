@@ -431,7 +431,7 @@ export default function PlanDetailPage() {
       <div className="max-w-4xl mx-auto px-4 py-10 space-y-6">
 
         {/* Header */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 sticky top-14 z-20">
           <div className="flex flex-col gap-3">
             <div className="flex items-center gap-4 flex-wrap">
               <Link
