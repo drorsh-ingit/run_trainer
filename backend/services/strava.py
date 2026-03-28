@@ -293,3 +293,62 @@ def sync_plan_activities(plan_id: int, user_id: int, db: Session) -> dict:
 
     db.commit()
     return {"synced": synced, "skipped": skipped, "errors": errors}
+
+
+# ── Rescore ───────────────────────────────────────────────────────────────────
+
+def rescore_plan_activities(plan_id: int, user_id: int, db: Session) -> int:
+    """Re-score all matched activities for a plan using stored data (no Strava re-fetch).
+    Returns the number of activities rescored."""
+    from models.models import User
+
+    user = db.query(User).filter(User.id == user_id).first()
+    max_hr = user.max_hr if user else None
+
+    activities = (
+        db.query(WorkoutActivity)
+        .filter(WorkoutActivity.plan_id == plan_id, WorkoutActivity.workout_id.isnot(None))
+        .all()
+    )
+
+    rescored = 0
+    for wa in activities:
+        workout = db.query(PlannedWorkout).filter(PlannedWorkout.id == wa.workout_id).first()
+        if not workout:
+            continue
+
+        hr_zones = None
+        if wa.streams_data:
+            if "heartrate" in wa.streams_data and max_hr:
+                hr_zones = compute_hr_zones(wa.streams_data["heartrate"], max_hr)
+            elif "hr_zones" in wa.streams_data:
+                hr_zones = wa.streams_data["hr_zones"]
+
+        actual_pace = (
+            round(1000 / (wa.average_speed_ms * 60), 2)
+            if wa.average_speed_ms and wa.average_speed_ms > 0
+            else None
+        )
+
+        try:
+            from services.claude import generate_match_analysis
+            score, comment = generate_match_analysis(
+                workout_type=workout.workout_type,
+                description=workout.description or "",
+                target_distance_km=workout.target_distance_km,
+                target_duration_min=workout.target_duration_minutes,
+                actual_distance_km=wa.actual_distance_km,
+                actual_duration_sec=wa.actual_duration_sec,
+                actual_pace_min_per_km=actual_pace,
+                average_hr=wa.average_hr,
+                hr_zones=hr_zones,
+            )
+        except Exception:
+            score, comment = _score_match(workout, wa.actual_distance_km or 0, actual_pace)
+
+        wa.match_score = score
+        wa.match_comment = comment
+        rescored += 1
+
+    db.commit()
+    return rescored

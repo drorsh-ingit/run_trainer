@@ -648,10 +648,15 @@ Given the planned workout and actual activity data, return JSON with exactly two
 
 Scoring guidelines:
 - Consider distance completion, pace appropriateness for the workout type, HR zone alignment, and duration
-- For easy/recovery runs: HR zone compliance matters most (should be low Z1-Z2); going too fast is a negative
-- For tempo/threshold runs: pace consistency and hitting target distance matter most
-- For long runs: distance completion and keeping HR aerobic (Z2-Z3) matter most
-- For intervals: distance completion and effort level matter most
+
+Workout-type rules (apply strictly):
+- Easy / recovery runs: HR compliance is the PRIMARY factor (weight ~60% of score). Must stay in Z1-Z2. HR zone distribution matters far more than pace — going too fast is only a minor negative, but sustained Z3+ HR should weigh heavily on the score.
+- Long runs (or easy-paced segments within a long run): Same HR emphasis as easy runs — aerobic control (Z2, occasional Z3 at most) is the dominant criterion. Distance completion matters too but never at the expense of HR discipline.
+- Tempo / threshold runs: Pace consistency and hitting target distance matter most. Do NOT penalize for running faster than the target pace — reward it slightly if HR and distance were on point. Penalize only erratic pacing or falling well short of distance.
+- Intervals / strides / speed work: Effort level and completing the prescribed reps/distance matter most. Do NOT penalize for exceeding target pace — faster is fine. Penalize only if effort was too low or the session was cut short.
+- Race-pace runs: Treat like tempo — consistency and distance first, no penalty for being fast.
+
+Score bands:
 - 90-100: excellent execution
 - 75-89: good, minor deviations
 - 60-74: acceptable, some issues

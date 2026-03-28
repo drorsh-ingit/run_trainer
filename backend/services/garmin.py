@@ -490,6 +490,13 @@ def sync_plan_activities(plan_id: int, user_id: int, db: Session) -> dict:
 
     db.commit()
 
+    # Score matched activities using stored data
+    try:
+        from services.strava import rescore_plan_activities
+        rescore_plan_activities(plan_id, user_id, db)
+    except Exception:
+        pass
+
     # Persist refreshed token
     try:
         garmin_session.token_dump_enc = encrypt_str(api.garth.dumps())

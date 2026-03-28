@@ -322,6 +322,18 @@ def ignore_activity(
 
     db.commit()
 
+    # Re-sync so the freed workout slot can match a different activity
+    try:
+        import services.strava as _strava_svc
+        _strava_svc.sync_plan_activities(plan_id, current_user.id, db)
+    except Exception:
+        pass
+    try:
+        import services.garmin as _garmin_svc
+        _garmin_svc.sync_plan_activities(plan_id, current_user.id, db)
+    except Exception:
+        pass
+
 
 # ── /plans/{plan_id}/garmin-sync ──────────────────────────────────────────────
 

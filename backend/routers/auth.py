@@ -40,8 +40,20 @@ def me(current_user: User = Depends(get_current_user)):
 
 @router.patch("/me", response_model=UserOut)
 def update_me(body: UserUpdate, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    max_hr_changed = body.max_hr is not None and body.max_hr != current_user.max_hr
     if body.max_hr is not None:
         current_user.max_hr = body.max_hr
     db.commit()
     db.refresh(current_user)
+
+    if max_hr_changed:
+        from models.models import TrainingPlan
+        from services.strava import rescore_plan_activities
+        plans = db.query(TrainingPlan).filter(TrainingPlan.user_id == current_user.id).all()
+        for plan in plans:
+            try:
+                rescore_plan_activities(plan.id, current_user.id, db)
+            except Exception:
+                pass
+
     return current_user
