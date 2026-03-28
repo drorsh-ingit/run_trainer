@@ -431,8 +431,8 @@ export default function PlanDetailPage() {
       <div className="max-w-4xl mx-auto px-4 py-10 space-y-6">
 
         {/* Header */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
-          <div className="flex flex-col gap-2 sticky top-14 z-20 bg-white -mx-6 px-6 py-3 rounded-t-2xl">
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 sticky top-14 z-20">
+          <div className="flex flex-col gap-3">
             <div className="flex items-center gap-4 flex-wrap">
               <Link
                 href={`/calendar?plan_id=${plan.id}`}
@@ -598,15 +598,15 @@ export default function PlanDetailPage() {
                 <p className="text-xs text-teal-600">{activitySyncResult}</p>
               )}
             </div>
-            <h1 className="text-xl font-semibold text-gray-900">
-              {plan.plan_type === "general"
-                ? `General fitness — ${plan.plan_duration_weeks ?? plan.plan_data?.total_weeks} weeks`
-                : `${plan.goal_distance} km — ${plan.goal_date}`}
-            </h1>
-          </div>
-          <div className="mt-2">
-            <p className="text-gray-600 text-sm">{plan.plan_data?.summary}</p>
-            <p className="text-gray-400 text-xs mt-1">{plan.plan_data?.total_weeks} weeks total</p>
+            <div>
+              <h1 className="text-xl font-semibold text-gray-900">
+                {plan.plan_type === "general"
+                  ? `General fitness — ${plan.plan_duration_weeks ?? plan.plan_data?.total_weeks} weeks`
+                  : `${plan.goal_distance} km — ${plan.goal_date}`}
+              </h1>
+              <p className="text-gray-600 text-sm mt-2">{plan.plan_data?.summary}</p>
+              <p className="text-gray-400 text-xs mt-1">{plan.plan_data?.total_weeks} weeks total</p>
+            </div>
           </div>
 
         {/* Garmin credentials modal */}
