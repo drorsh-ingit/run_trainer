@@ -223,10 +223,11 @@ def sync_plan_activities(plan_id: int, user_id: int, db: Session) -> dict:
     ]
 
     # Clear all previous activity records for this plan (matched and unmatched)
+    # Commit the deletes before inserting new rows to avoid unique constraint violations
     db.query(WorkoutActivity).filter(WorkoutActivity.plan_id == plan_id).delete(synchronize_session="fetch")
     for w in workouts:
         w.completed = False
-    db.flush()
+    db.commit()
 
     # Match activities to workouts by date, then best distance fit
     matched_workout_ids: set[int] = set()
