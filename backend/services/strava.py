@@ -222,36 +222,46 @@ def sync_plan_activities(plan_id: int, user_id: int, db: Session) -> dict:
         and str(act.get("id")) not in ignored_ids
     ]
 
-    # Clear all previous activity records for this plan (matched and unmatched)
-    # Also delete orphans where plan_id is NULL but workout_id belongs to this plan
-    from sqlalchemy import text
-    workout_ids = [w.id for w in workouts]
-    db.execute(text("DELETE FROM workout_activities WHERE plan_id = :pid"), {"pid": plan_id})
-    if workout_ids:
-        db.execute(
-            text("DELETE FROM workout_activities WHERE workout_id = ANY(:wids)"),
-            {"wids": workout_ids},
-        )
-    db.execute(text("UPDATE planned_workouts SET completed = false WHERE plan_id = :pid"), {"pid": plan_id})
-    db.commit()
-    # Refresh ORM state after raw SQL changes
-    db.expire_all()
-    workouts = (
-        db.query(PlannedWorkout)
-        .filter(PlannedWorkout.plan_id == plan_id, PlannedWorkout.workout_type != "rest")
+    # Build a lookup of existing activity records by strava_activity_id
+    existing_rows = (
+        db.query(WorkoutActivity)
+        .filter(WorkoutActivity.plan_id == plan_id)
         .all()
     )
-    workout_by_date = {}
-    for w in workouts:
-        workout_by_date.setdefault(str(w.scheduled_date), []).append(w)
+    existing_by_strava_id = {r.strava_activity_id: r for r in existing_rows}
+
+    # Also find orphans (plan_id is NULL but workout_id belongs to this plan)
+    workout_ids = [w.id for w in workouts]
+    if workout_ids:
+        orphans = (
+            db.query(WorkoutActivity)
+            .filter(WorkoutActivity.plan_id.is_(None), WorkoutActivity.workout_id.in_(workout_ids))
+            .all()
+        )
+        for o in orphans:
+            db.delete(o)
+
+    # Find strava IDs that are no longer in the fetched set (removed/filtered)
+    fetched_ids = {str(act.get("id")) for act in run_activities}
+    for strava_id, row in existing_by_strava_id.items():
+        if strava_id not in fetched_ids:
+            if row.workout_id:
+                w = db.query(PlannedWorkout).filter(PlannedWorkout.id == row.workout_id).first()
+                if w:
+                    w.completed = False
+            db.delete(row)
 
     # Match activities to workouts by date, then best distance fit
-    matched_workout_ids: set[int] = set()
+    # First, collect workout_ids already claimed by existing (kept) rows
+    kept_rows = {sid: r for sid, r in existing_by_strava_id.items() if sid in fetched_ids}
+    matched_workout_ids: set[int] = {r.workout_id for r in kept_rows.values() if r.workout_id}
     act_to_workout: dict[str, PlannedWorkout] = {}
-    for act in run_activities:
+
+    # Only match NEW activities (not already in DB)
+    new_activities = [act for act in run_activities if str(act.get("id")) not in existing_by_strava_id]
+    for act in new_activities:
         act_date = act["start_date_local"][:10]
         candidates = workout_by_date.get(act_date, [])
-        # Exclude workouts already claimed by another activity
         available = [w for w in candidates if w.id not in matched_workout_ids]
         workout = _best_match(available, act["distance"] / 1000)
         if workout:
@@ -261,7 +271,14 @@ def sync_plan_activities(plan_id: int, user_id: int, db: Session) -> dict:
     workout_map = {w.id: w for w in workouts}
     synced, skipped, errors = 0, 0, []
 
-    for act in run_activities:
+    # Ensure existing matched workouts stay marked completed
+    for r in kept_rows.values():
+        if r.workout_id and r.workout_id in workout_map:
+            workout_map[r.workout_id].completed = True
+            synced += 1
+
+    # Only process NEW activities
+    for act in new_activities:
         act_id = str(act["id"])
         actual_km = round(act["distance"] / 1000, 2)
         avg_speed = act.get("average_speed")
@@ -316,7 +333,8 @@ def sync_plan_activities(plan_id: int, user_id: int, db: Session) -> dict:
             skipped += 1
 
     db.commit()
-    return {"synced": synced, "skipped": skipped, "total": synced + skipped, "errors": errors}
+    total = len(run_activities)
+    return {"synced": synced, "skipped": total - synced, "total": total, "errors": errors}
 
 
 # ── Rescore ───────────────────────────────────────────────────────────────────
