@@ -223,9 +223,15 @@ def sync_plan_activities(plan_id: int, user_id: int, db: Session) -> dict:
     ]
 
     # Clear all previous activity records for this plan (matched and unmatched)
-    # Use raw SQL + separate commit to guarantee rows are gone before new inserts
+    # Also delete orphans where plan_id is NULL but workout_id belongs to this plan
     from sqlalchemy import text
+    workout_ids = [w.id for w in workouts]
     db.execute(text("DELETE FROM workout_activities WHERE plan_id = :pid"), {"pid": plan_id})
+    if workout_ids:
+        db.execute(
+            text("DELETE FROM workout_activities WHERE workout_id = ANY(:wids)"),
+            {"wids": workout_ids},
+        )
     db.execute(text("UPDATE planned_workouts SET completed = false WHERE plan_id = :pid"), {"pid": plan_id})
     db.commit()
     # Refresh ORM state after raw SQL changes
