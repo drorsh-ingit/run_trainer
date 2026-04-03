@@ -47,8 +47,11 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
       <div className="w-full max-w-sm">
-        <h1 className="text-2xl font-bold text-gray-900 mb-1 text-center">Run Trainer</h1>
-        <p className="text-gray-500 text-sm text-center mb-8">Sign in to your account</p>
+        <div className="flex flex-col items-center mb-8">
+          <img src="/icon.png" alt="Run Trainer" className="w-20 h-20 rounded-2xl shadow-md mb-3" />
+          <h1 className="text-2xl font-bold text-gray-900 mb-1">Run Trainer</h1>
+          <p className="text-gray-500 text-sm">Sign in to your account</p>
+        </div>
 
         <form
           onSubmit={handleSubmit}

@@ -28,7 +28,8 @@ export default function Nav() {
   return (
     <nav className="bg-white border-b border-gray-200 sticky top-0 z-10">
       <div className="max-w-4xl mx-auto px-4 h-14 flex items-center justify-between">
-        <Link href="/dashboard" className="text-base font-semibold text-gray-900 hover:text-blue-600">
+        <Link href="/dashboard" className="flex items-center gap-2 text-base font-semibold text-gray-900 hover:text-blue-600">
+          <img src="/icon.png" alt="" className="w-7 h-7 rounded-md" />
           Run Trainer
         </Link>
         <div className="flex items-center gap-6">
