@@ -223,11 +223,21 @@ def sync_plan_activities(plan_id: int, user_id: int, db: Session) -> dict:
     ]
 
     # Clear all previous activity records for this plan (matched and unmatched)
-    # Commit the deletes before inserting new rows to avoid unique constraint violations
-    db.query(WorkoutActivity).filter(WorkoutActivity.plan_id == plan_id).delete(synchronize_session="fetch")
-    for w in workouts:
-        w.completed = False
+    # Use raw SQL + separate commit to guarantee rows are gone before new inserts
+    from sqlalchemy import text
+    db.execute(text("DELETE FROM workout_activities WHERE plan_id = :pid"), {"pid": plan_id})
+    db.execute(text("UPDATE planned_workouts SET completed = false WHERE plan_id = :pid"), {"pid": plan_id})
     db.commit()
+    # Refresh ORM state after raw SQL changes
+    db.expire_all()
+    workouts = (
+        db.query(PlannedWorkout)
+        .filter(PlannedWorkout.plan_id == plan_id, PlannedWorkout.workout_type != "rest")
+        .all()
+    )
+    workout_by_date = {}
+    for w in workouts:
+        workout_by_date.setdefault(str(w.scheduled_date), []).append(w)
 
     # Match activities to workouts by date, then best distance fit
     matched_workout_ids: set[int] = set()
