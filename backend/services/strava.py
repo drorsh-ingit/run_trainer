@@ -215,81 +215,88 @@ def sync_plan_activities(plan_id: int, user_id: int, db: Session) -> dict:
         db.query(IgnoredActivity).filter(IgnoredActivity.plan_id == plan_id).all()
     }
 
-    synced, skipped, errors = 0, 0, []
-    for act in activities:
-        if str(act.get("id")) in ignored_ids:
-            skipped += 1
-            continue
+    # Filter to running activities, excluding ignored
+    run_activities = [
+        act for act in activities
+        if act.get("type") in ("Run", "VirtualRun", "TrailRun")
+        and str(act.get("id")) not in ignored_ids
+    ]
 
-        if act.get("type") not in ("Run", "VirtualRun", "TrailRun"):
-            skipped += 1
-            continue
+    # Clear all previous activity records for this plan (matched and unmatched)
+    db.query(WorkoutActivity).filter(WorkoutActivity.plan_id == plan_id).delete(synchronize_session=False)
+    for w in workouts:
+        w.completed = False
+    db.flush()
 
+    # Match activities to workouts by date, then best distance fit
+    matched_workout_ids: set[int] = set()
+    act_to_workout: dict[str, PlannedWorkout] = {}
+    for act in run_activities:
         act_date = act["start_date_local"][:10]
         candidates = workout_by_date.get(act_date, [])
-        if not candidates:
-            skipped += 1
-            continue
+        # Exclude workouts already claimed by another activity
+        available = [w for w in candidates if w.id not in matched_workout_ids]
+        workout = _best_match(available, act["distance"] / 1000)
+        if workout:
+            act_to_workout[str(act["id"])] = workout
+            matched_workout_ids.add(workout.id)
 
-        workout = _best_match(candidates, act["distance"] / 1000)
-        if workout is None:
-            skipped += 1
-            continue
+    workout_map = {w.id: w for w in workouts}
+    synced, skipped, errors = 0, 0, []
 
-        # Fetch streams and compute HR zones (best-effort)
-        streams = {}
-        try:
-            streams = fetch_streams(access_token, str(act["id"]))
-            if "heartrate" in streams and max_hr:
-                streams["hr_zones"] = compute_hr_zones(streams["heartrate"], max_hr)
-        except Exception as e:
-            errors.append(f"Streams fetch failed for activity {act['id']}: {e}")
-
-        existing = db.query(WorkoutActivity).filter(WorkoutActivity.workout_id == workout.id).first()
-
-        # Skip already-processed activities — same Strava ID and score already computed
-        if existing and existing.strava_activity_id == str(act["id"]) and existing.match_score is not None:
-            skipped += 1
-            continue
-
-        if not existing:
-            existing = WorkoutActivity(workout_id=workout.id, plan_id=plan_id)
-            db.add(existing)
-
+    for act in run_activities:
+        act_id = str(act["id"])
         actual_km = round(act["distance"] / 1000, 2)
         avg_speed = act.get("average_speed")
         actual_pace = round(1000 / (avg_speed * 60), 2) if avg_speed and avg_speed > 0 else None
-        hr_zones = streams.get("hr_zones") if streams else None
-        try:
-            from services.claude import generate_match_analysis
-            score, comment = generate_match_analysis(
-                workout_type=workout.workout_type,
-                description=workout.description or "",
-                target_distance_km=workout.target_distance_km,
-                target_duration_min=workout.target_duration_minutes,
-                actual_distance_km=actual_km,
-                actual_duration_sec=act.get("moving_time"),
-                actual_pace_min_per_km=actual_pace,
-                average_hr=act.get("average_heartrate"),
-                hr_zones=hr_zones,
-            )
-        except Exception:
-            score, comment = _score_match(workout, actual_km, actual_pace)
+        workout = act_to_workout.get(act_id)
 
-        existing.strava_activity_id = str(act["id"])
-        existing.name = act.get("name")
-        existing.actual_distance_km = actual_km
-        existing.actual_duration_sec = act.get("moving_time")
-        existing.average_hr = act.get("average_heartrate")
-        existing.average_speed_ms = avg_speed
-        existing.start_date = datetime.fromisoformat(act["start_date_local"])
-        existing.streams_data = streams or None
-        existing.match_score = score
-        existing.match_comment = comment
+        # Fetch streams for matched activities only (avoid excessive API calls)
+        streams = {}
+        if workout:
+            try:
+                streams = fetch_streams(access_token, act_id)
+                if "heartrate" in streams and max_hr:
+                    streams["hr_zones"] = compute_hr_zones(streams["heartrate"], max_hr)
+            except Exception as e:
+                errors.append(f"Streams fetch failed for activity {act_id}: {e}")
 
-        workout.completed = True
-        workout.strava_activity_id = str(act["id"])
-        synced += 1
+        row = WorkoutActivity(plan_id=plan_id, workout_id=workout.id if workout else None)
+        db.add(row)
+
+        row.strava_activity_id = act_id
+        row.name = act.get("name")
+        row.actual_distance_km = actual_km
+        row.actual_duration_sec = act.get("moving_time")
+        row.average_hr = act.get("average_heartrate")
+        row.average_speed_ms = avg_speed
+        row.start_date = datetime.fromisoformat(act["start_date_local"])
+        row.streams_data = streams or None
+
+        if workout:
+            hr_zones = streams.get("hr_zones") if streams else None
+            try:
+                from services.claude import generate_match_analysis
+                score, comment = generate_match_analysis(
+                    workout_type=workout.workout_type,
+                    description=workout.description or "",
+                    target_distance_km=workout.target_distance_km,
+                    target_duration_min=workout.target_duration_minutes,
+                    actual_distance_km=actual_km,
+                    actual_duration_sec=act.get("moving_time"),
+                    actual_pace_min_per_km=actual_pace,
+                    average_hr=act.get("average_heartrate"),
+                    hr_zones=hr_zones,
+                )
+            except Exception:
+                score, comment = _score_match(workout, actual_km, actual_pace)
+
+            row.match_score = score
+            row.match_comment = comment
+            workout_map[workout.id].completed = True
+            synced += 1
+        else:
+            skipped += 1
 
     db.commit()
     return {"synced": synced, "skipped": skipped, "errors": errors}
