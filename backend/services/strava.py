@@ -1,4 +1,3 @@
-import logging
 import time
 import urllib.parse
 from datetime import datetime, timezone, date as date_type
@@ -8,8 +7,6 @@ from sqlalchemy.orm import Session
 
 from config import settings
 from models.models import IgnoredActivity, PlannedWorkout, StravaToken, WorkoutActivity
-
-logger = logging.getLogger(__name__)
 
 STRAVA_TOKEN_URL = "https://www.strava.com/oauth/token"
 STRAVA_AUTH_URL = "https://www.strava.com/oauth/authorize"
@@ -209,9 +206,6 @@ def sync_plan_activities(plan_id: int, user_id: int, db: Session) -> dict:
         after_epoch = int(datetime(d.year, d.month, d.day, tzinfo=timezone.utc).timestamp())
 
     activities = fetch_recent_activities(access_token, after_epoch=after_epoch)
-    print(f"[STRAVA SYNC] plan={plan_id}: fetched {len(activities)} activities (after_epoch={after_epoch})")
-    for act in activities:
-        print(f"[STRAVA SYNC]   id={act.get('id')} type={act.get('type')} date={act.get('start_date_local', '')[:10]} name={act.get('name')}")
 
     # Use user's configured max HR, fall back to Strava athlete profile
     max_hr = user_max_hr or fetch_athlete_max_hr(access_token)
@@ -227,10 +221,9 @@ def sync_plan_activities(plan_id: int, user_id: int, db: Session) -> dict:
         if act.get("type") in ("Run", "VirtualRun", "TrailRun")
         and str(act.get("id")) not in ignored_ids
     ]
-    print(f"[STRAVA SYNC] plan={plan_id}: {len(run_activities)} run activities after filtering (ignored_ids={ignored_ids})")
 
     # Clear all previous activity records for this plan (matched and unmatched)
-    db.query(WorkoutActivity).filter(WorkoutActivity.plan_id == plan_id).delete(synchronize_session=False)
+    db.query(WorkoutActivity).filter(WorkoutActivity.plan_id == plan_id).delete(synchronize_session="fetch")
     for w in workouts:
         w.completed = False
     db.flush()
@@ -306,7 +299,7 @@ def sync_plan_activities(plan_id: int, user_id: int, db: Session) -> dict:
             skipped += 1
 
     db.commit()
-    return {"synced": synced, "skipped": skipped, "errors": errors}
+    return {"synced": synced, "skipped": skipped, "total": synced + skipped, "errors": errors}
 
 
 # ── Rescore ───────────────────────────────────────────────────────────────────

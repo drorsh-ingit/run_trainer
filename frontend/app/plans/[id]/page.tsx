@@ -281,7 +281,8 @@ export default function PlanDetailPage() {
         setActivitySyncResult(msg);
         return;
       }
-      setActivitySyncResult(`Pulled ${data.synced} activit${data.synced !== 1 ? "ies" : "y"}`);
+      const total = data.total ?? data.synced;
+      setActivitySyncResult(`Pulled ${total} activit${total !== 1 ? "ies" : "y"} (${data.synced} matched)`);
       const planRes = await apiFetch(`/plans/${id}`);
       if (planRes.ok) setPlan(await planRes.json());
     } catch {
@@ -307,7 +308,8 @@ export default function PlanDetailPage() {
       const res = await apiFetch(`/strava/sync/${id}`, { method: "POST" });
       const data = await res.json();
       if (!res.ok) { setActivitySyncResult(data.detail ?? "Pull failed"); return; }
-      setActivitySyncResult(`Pulled ${data.synced} activit${data.synced !== 1 ? "ies" : "y"} from Strava`);
+      const total = data.total ?? data.synced;
+      setActivitySyncResult(`Pulled ${total} activit${total !== 1 ? "ies" : "y"} from Strava (${data.synced} matched)`);
       const planRes = await apiFetch(`/plans/${id}`);
       if (planRes.ok) setPlan(await planRes.json());
     } catch {
