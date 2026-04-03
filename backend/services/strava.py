@@ -209,9 +209,9 @@ def sync_plan_activities(plan_id: int, user_id: int, db: Session) -> dict:
         after_epoch = int(datetime(d.year, d.month, d.day, tzinfo=timezone.utc).timestamp())
 
     activities = fetch_recent_activities(access_token, after_epoch=after_epoch)
-    logger.info("Strava sync plan=%s: fetched %d activities (after_epoch=%s)", plan_id, len(activities), after_epoch)
+    print(f"[STRAVA SYNC] plan={plan_id}: fetched {len(activities)} activities (after_epoch={after_epoch})")
     for act in activities:
-        logger.info("  activity id=%s type=%s date=%s name=%s", act.get("id"), act.get("type"), act.get("start_date_local", "")[:10], act.get("name"))
+        print(f"[STRAVA SYNC]   id={act.get('id')} type={act.get('type')} date={act.get('start_date_local', '')[:10]} name={act.get('name')}")
 
     # Use user's configured max HR, fall back to Strava athlete profile
     max_hr = user_max_hr or fetch_athlete_max_hr(access_token)
@@ -227,7 +227,7 @@ def sync_plan_activities(plan_id: int, user_id: int, db: Session) -> dict:
         if act.get("type") in ("Run", "VirtualRun", "TrailRun")
         and str(act.get("id")) not in ignored_ids
     ]
-    logger.info("Strava sync plan=%s: %d run activities after filtering (ignored_ids=%s)", plan_id, len(run_activities), ignored_ids)
+    print(f"[STRAVA SYNC] plan={plan_id}: {len(run_activities)} run activities after filtering (ignored_ids={ignored_ids})")
 
     # Clear all previous activity records for this plan (matched and unmatched)
     db.query(WorkoutActivity).filter(WorkoutActivity.plan_id == plan_id).delete(synchronize_session=False)
