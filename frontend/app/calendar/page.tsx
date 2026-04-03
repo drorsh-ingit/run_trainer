@@ -136,7 +136,7 @@ function formatDuration(secs: number): string {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
-function WorkoutTooltip({ workout, cellRef, onIgnore, onMouseEnter, onMouseLeave }: { workout: Workout; cellRef: React.RefObject<HTMLDivElement | null>; onIgnore?: () => void; onMouseEnter?: () => void; onMouseLeave?: () => void }) {
+function WorkoutTooltip({ workout, cellRef, onIgnore, ignoring, onMouseEnter, onMouseLeave }: { workout: Workout; cellRef: React.RefObject<HTMLDivElement | null>; onIgnore?: () => void; ignoring?: boolean; onMouseEnter?: () => void; onMouseLeave?: () => void }) {
   const tooltipRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
 
@@ -216,8 +216,8 @@ function WorkoutTooltip({ workout, cellRef, onIgnore, onMouseEnter, onMouseLeave
             <div className="mt-1 pt-1 border-t border-current border-opacity-20 italic opacity-80">{workout.activity.match_comment}</div>
           )}
           {onIgnore && (
-            <button onClick={onIgnore} className="mt-1.5 opacity-40 hover:opacity-80 transition-opacity text-[10px]">
-              ignore activity
+            <button onClick={onIgnore} disabled={ignoring} className="mt-1.5 opacity-40 hover:opacity-80 transition-opacity text-[10px] disabled:opacity-60">
+              {ignoring ? "ignoring…" : "ignore activity"}
             </button>
           )}
         </div>
@@ -230,7 +230,7 @@ function WorkoutTooltip({ workout, cellRef, onIgnore, onMouseEnter, onMouseLeave
   );
 }
 
-function WorkoutCell({ workout, isCurrentMonth, onIgnore }: { workout: Workout; isCurrentMonth: boolean; onIgnore?: () => void }) {
+function WorkoutCell({ workout, isCurrentMonth, onIgnore, ignoring }: { workout: Workout; isCurrentMonth: boolean; onIgnore?: () => void; ignoring?: boolean }) {
   const [hovered, setHovered] = useState(false);
   const cellRef = useRef<HTMLDivElement>(null);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -316,6 +316,7 @@ function WorkoutCell({ workout, isCurrentMonth, onIgnore }: { workout: Workout; 
           workout={workout}
           cellRef={cellRef}
           onIgnore={workout.activity?.strava_activity_id ? onIgnore : undefined}
+          ignoring={ignoring}
           onMouseEnter={showTooltip}
           onMouseLeave={hideTooltip}
         />
@@ -324,7 +325,7 @@ function WorkoutCell({ workout, isCurrentMonth, onIgnore }: { workout: Workout; 
   );
 }
 
-function ActivityTooltip({ activity, cellRef, onIgnore, onMouseEnter, onMouseLeave }: { activity: ActivityEntry; cellRef: React.RefObject<HTMLDivElement | null>; onIgnore?: () => void; onMouseEnter?: () => void; onMouseLeave?: () => void }) {
+function ActivityTooltip({ activity, cellRef, onIgnore, ignoring, onMouseEnter, onMouseLeave }: { activity: ActivityEntry; cellRef: React.RefObject<HTMLDivElement | null>; onIgnore?: () => void; ignoring?: boolean; onMouseEnter?: () => void; onMouseLeave?: () => void }) {
   const tooltipRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
   const pace = activity.average_pace_min_per_km;
@@ -362,15 +363,15 @@ function ActivityTooltip({ activity, cellRef, onIgnore, onMouseEnter, onMouseLea
       )}
       {activity.average_hr != null && <div>{Math.round(activity.average_hr)} bpm avg HR</div>}
       {onIgnore && (
-        <button onClick={onIgnore} className="pt-1 opacity-40 hover:opacity-80 transition-opacity text-[10px] block">
-          ignore activity
+        <button onClick={onIgnore} disabled={ignoring} className="pt-1 opacity-40 hover:opacity-80 transition-opacity text-[10px] block disabled:opacity-60">
+          {ignoring ? "ignoring…" : "ignore activity"}
         </button>
       )}
     </div>
   );
 }
 
-function ActivityCell({ activity, isCurrentMonth, onIgnore }: { activity: ActivityEntry; isCurrentMonth: boolean; onIgnore?: () => void }) {
+function ActivityCell({ activity, isCurrentMonth, onIgnore, ignoring }: { activity: ActivityEntry; isCurrentMonth: boolean; onIgnore?: () => void; ignoring?: boolean }) {
   const [hovered, setHovered] = useState(false);
   const cellRef = useRef<HTMLDivElement>(null);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -401,6 +402,7 @@ function ActivityCell({ activity, isCurrentMonth, onIgnore }: { activity: Activi
           activity={activity}
           cellRef={cellRef}
           onIgnore={onIgnore}
+          ignoring={ignoring}
           onMouseEnter={showTooltip}
           onMouseLeave={hideTooltip}
         />
@@ -442,10 +444,13 @@ function CalendarPage() {
     }
   };
 
+  const [ignoringId, setIgnoringId] = useState<string | null>(null);
   const handleIgnoreActivity = async (activityId: string) => {
     if (!resolvedPlanId) return;
+    setIgnoringId(activityId);
     const res = await apiFetch(`/plans/${resolvedPlanId}/activities/${activityId}`, { method: "DELETE" });
-    if (res.ok) reloadActivities(resolvedPlanId);
+    if (res.ok) await reloadActivities(resolvedPlanId);
+    setIgnoringId(null);
   };
 
   useEffect(() => {
@@ -625,6 +630,7 @@ function CalendarPage() {
                       workout={workout}
                       isCurrentMonth={isCurrentMonth}
                       onIgnore={workout.activity?.strava_activity_id ? () => handleIgnoreActivity(workout.activity!.strava_activity_id!) : undefined}
+                      ignoring={ignoringId === workout.activity?.strava_activity_id}
                     />
                   )}
                   {!workout && isGoalDate && goalDateKey && (
@@ -636,6 +642,7 @@ function CalendarPage() {
                       activity={act}
                       isCurrentMonth={isCurrentMonth}
                       onIgnore={() => handleIgnoreActivity(act.strava_activity_id)}
+                      ignoring={ignoringId === act.strava_activity_id}
                     />
                   ))}
                 </div>
