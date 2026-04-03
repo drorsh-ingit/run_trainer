@@ -269,13 +269,12 @@ def sync_plan_activities(plan_id: int, user_id: int, db: Session) -> dict:
             matched_workout_ids.add(workout.id)
 
     workout_map = {w.id: w for w in workouts}
-    synced, skipped, errors = 0, 0, []
+    new_synced, new_unmatched, errors = 0, 0, []
 
     # Ensure existing matched workouts stay marked completed
     for r in kept_rows.values():
         if r.workout_id and r.workout_id in workout_map:
             workout_map[r.workout_id].completed = True
-            synced += 1
 
     # Only process NEW activities
     for act in new_activities:
@@ -328,13 +327,21 @@ def sync_plan_activities(plan_id: int, user_id: int, db: Session) -> dict:
             row.match_score = score
             row.match_comment = comment
             workout_map[workout.id].completed = True
-            synced += 1
+            new_synced += 1
         else:
-            skipped += 1
+            new_unmatched += 1
 
     db.commit()
-    total = len(run_activities)
-    return {"synced": synced, "skipped": total - synced, "total": total, "errors": errors}
+    new_total = len(new_activities)
+    total_matched = sum(1 for r in kept_rows.values() if r.workout_id) + new_synced
+    return {
+        "synced": new_synced,
+        "skipped": new_unmatched,
+        "new_total": new_total,
+        "total": len(run_activities),
+        "total_matched": total_matched,
+        "errors": errors,
+    }
 
 
 # ── Rescore ───────────────────────────────────────────────────────────────────

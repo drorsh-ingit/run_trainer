@@ -308,8 +308,12 @@ export default function PlanDetailPage() {
       const res = await apiFetch(`/strava/sync/${id}`, { method: "POST" });
       const data = await res.json();
       if (!res.ok) { setActivitySyncResult(data.detail ?? "Pull failed"); return; }
-      const total = data.total ?? data.synced;
-      setActivitySyncResult(`Pulled ${total} activit${total !== 1 ? "ies" : "y"} from Strava (${data.synced} matched)`);
+      const newTotal = data.new_total ?? data.total ?? data.synced;
+      if (newTotal === 0) {
+        setActivitySyncResult("No new activities from Strava");
+      } else {
+        setActivitySyncResult(`Pulled ${newTotal} new activit${newTotal !== 1 ? "ies" : "y"} from Strava (${data.synced} matched)`);
+      }
       const planRes = await apiFetch(`/plans/${id}`);
       if (planRes.ok) setPlan(await planRes.json());
     } catch {
