@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import Nav from "../../components/Nav";
 import GarminModal from "../../components/GarminModal";
+import GeneratingProgress from "../../components/GeneratingProgress";
 import { apiFetch, useRequireAuth } from "../../hooks/useAuth";
 
 type WorkoutActivity = {
@@ -951,17 +952,7 @@ export default function PlanDetailPage() {
                   </div>
                 </div>
               ))}
-              {assessLoading && !assessMessages.some(m => m.isStatus) && (
-                <div className="flex justify-start">
-                  <div className="bg-gray-100 rounded-2xl rounded-bl-sm px-4 py-2.5">
-                    <div className="flex gap-1 items-center h-4">
-                      <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce [animation-delay:0ms]" />
-                      <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce [animation-delay:150ms]" />
-                      <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce [animation-delay:300ms]" />
-                    </div>
-                  </div>
-                </div>
-              )}
+              <GeneratingProgress active={assessLoading} mode="assess" />
               <div ref={assessBottomRef} />
             </div>
 

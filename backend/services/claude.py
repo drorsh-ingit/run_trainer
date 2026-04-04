@@ -741,12 +741,14 @@ def assess_plan_revision(
     future_week_count = len(future_plan.get("weeks", []))
     max_tokens = min(max(future_week_count * 1800, 16000), 32000)
 
-    raw_text = _extract_json(_call_model(model, ASSESS_SYSTEM_PROMPT + "\n\n" + context, messages, max_tokens))
+    raw_response = _call_model(model, ASSESS_SYSTEM_PROMPT + "\n\n" + context, messages, max_tokens)
+    raw_text = _extract_json(raw_response)
 
     try:
         data = json.loads(raw_text)
-    except json.JSONDecodeError as e:
-        raise ValueError(f"Claude returned invalid JSON: {e}\nRaw: {raw_text[:500]}")
+    except json.JSONDecodeError:
+        # Claude broke out of JSON format — treat the raw prose as a conversational reply
+        return {"type": "question", "message": raw_response.strip()}
 
     if data.get("type") == "plan":
         data["plan"] = ClaudePlanResponse.model_validate(data["plan"])

@@ -20,6 +20,14 @@ const REVISE_STEPS: Step[] = [
   { label: "Re-checking the plan",      detail: "Validating volume, pacing, and recovery balance…",           duration: 999 },
 ];
 
+const ASSESS_STEPS: Step[] = [
+  { label: "Comparing planned vs actual", detail: "Reviewing distances, paces, HR zones, and missed sessions…",  duration: 10 },
+  { label: "Identifying patterns",        detail: "Looking for under/over-training, consistency gaps…",           duration: 15 },
+  { label: "Adjusting future weeks",      detail: "Revising workouts based on your actual performance…",          duration: 25 },
+  { label: "Writing workout details",     detail: "Adding pace targets, HR zones, and RPE for each session…",     duration: 20 },
+  { label: "Finalising revised plan",     detail: "Validating volume progression and recovery balance…",          duration: 999 },
+];
+
 function useTicker(steps: Step[], active: boolean) {
   const [stepIdx, setStepIdx] = useState(0);
   const [elapsed, setElapsed] = useState(0); // seconds since step start
@@ -58,11 +66,11 @@ function useProgress(steps: Step[], stepIdx: number, elapsed: number) {
 
 interface Props {
   active: boolean;
-  mode?: "generate" | "revise";
+  mode?: "generate" | "revise" | "assess";
 }
 
 export default function GeneratingProgress({ active, mode = "generate" }: Props) {
-  const steps = mode === "revise" ? REVISE_STEPS : GENERATE_STEPS;
+  const steps = mode === "assess" ? ASSESS_STEPS : mode === "revise" ? REVISE_STEPS : GENERATE_STEPS;
   const { stepIdx, elapsed } = useTicker(steps, active);
   // Guard against stale stepIdx from a previous mode before the reset effect fires
   const safeIdx = Math.min(stepIdx, steps.length - 1);
