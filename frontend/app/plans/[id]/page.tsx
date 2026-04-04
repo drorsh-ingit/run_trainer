@@ -46,6 +46,7 @@ type Plan = {
   additional_notes: string;
   plan_data: { summary: string; total_weeks: number; weeks: unknown[] };
   workouts: Workout[];
+  ai_model: string | null;
 };
 
 type ChatMsg = { role: "user" | "assistant"; content: string; isPlanUpdate?: boolean; isStatus?: boolean };
@@ -144,6 +145,24 @@ export default function PlanDetailPage() {
   const [chatModel, setChatModel] = useState<string | null>(null); // null = use plan's model
   const bottomRef = useRef<HTMLDivElement>(null);
 
+  // Assessment state
+  const [assessOpen, setAssessOpen] = useState(false);
+  const [assessMessages, setAssessMessages] = useState<ChatMsg[]>([]);
+  const [assessInput, setAssessInput] = useState("");
+  const [assessLoading, setAssessLoading] = useState(false);
+  const [assessError, setAssessError] = useState("");
+  const [assessPreview, setAssessPreview] = useState<Record<string, unknown> | null>(null);
+  const [assessSaving, setAssessSaving] = useState(false);
+  const [assessModel, setAssessModel] = useState<string | null>(null);
+  const assessBottomRef = useRef<HTMLDivElement>(null);
+  const assessPanelRef = useRef<HTMLDivElement>(null);
+
+  // Adjust dropdown state
+  const [showAdjustMenu, setShowAdjustMenu] = useState(false);
+  const [adjustMenuPos, setAdjustMenuPos] = useState<{top: number; left: number} | null>(null);
+  const adjustMenuRef = useRef<HTMLDivElement>(null);
+  const chatPanelRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     apiFetch(`/plans/${id}`)
       .then(async res => {
@@ -188,6 +207,19 @@ export default function PlanDetailPage() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, chatLoading]);
 
+  // Scroll to assessment panel when it opens
+  useEffect(() => {
+    if (assessOpen) {
+      setTimeout(() => assessPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
+    }
+  }, [assessOpen]);
+
+  // Scroll assessment chat to bottom within its own scroll container
+  useEffect(() => {
+    const el = assessBottomRef.current?.parentElement;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [assessMessages, assessLoading]);
+
   // Close pull menu on outside click
   useEffect(() => {
     if (!showPullMenu) return;
@@ -214,6 +246,18 @@ export default function PlanDetailPage() {
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [showExportMenu]);
+
+  // Close adjust menu on outside click
+  useEffect(() => {
+    if (!showAdjustMenu) return;
+    const handler = (e: MouseEvent) => {
+      if (adjustMenuRef.current && !adjustMenuRef.current.contains(e.target as Node)) {
+        setShowAdjustMenu(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showAdjustMenu]);
 
   const handleGarminPush = useCallback(async (month?: string) => {
     setShowExportMenu(false);
@@ -347,6 +391,146 @@ export default function PlanDetailPage() {
     const planRes = await apiFetch(`/plans/${id}`);
     if (planRes.ok) setPlan(await planRes.json());
   }, [id]);
+
+  // --- Assessment handlers ---
+
+  const processAssessSSE = async (res: Response) => {
+    if (!res.ok || !res.body) {
+      const data = await res.json().catch(() => ({}));
+      setAssessError(data.detail ?? `HTTP ${res.status}`);
+      return;
+    }
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = "";
+    setAssessMessages(prev => [...prev, { role: "assistant", content: "Analyzing…", isStatus: true }]);
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const lines = buf.split("\n");
+      buf = lines.pop() ?? "";
+      for (const line of lines) {
+        if (!line.startsWith("data: ")) continue;
+        try {
+          const evt = JSON.parse(line.slice(6));
+          if (evt.type === "status") {
+            setAssessMessages(prev => {
+              const next = [...prev];
+              const last = next[next.length - 1];
+              if (last?.isStatus) next[next.length - 1] = { ...last, content: evt.message };
+              return next;
+            });
+          } else if (evt.type === "question") {
+            setAssessMessages(prev => {
+              const next = prev.filter(m => !m.isStatus);
+              return [...next, { role: "assistant", content: evt.message }];
+            });
+          } else if (evt.type === "plan_preview") {
+            setAssessPreview(evt.revised_future_plan);
+            setAssessMessages(prev => {
+              const next = prev.filter(m => !m.isStatus);
+              return [...next, { role: "assistant", content: evt.message, isPlanUpdate: true }];
+            });
+          } else if (evt.type === "error") {
+            setAssessError(evt.message);
+            setAssessMessages(prev => prev.filter(m => !m.isStatus));
+          }
+        } catch { /* ignore malformed */ }
+      }
+    }
+  };
+
+  const handleAssessStart = () => {
+    setAssessOpen(true);
+    setAssessMessages([]);
+    setAssessPreview(null);
+    setAssessError("");
+    if (!assessModel && plan) setAssessModel(plan.ai_model ?? "claude-sonnet-4-6");
+  };
+
+  const handleAssessRun = async () => {
+    setAssessLoading(true);
+    setAssessError("");
+
+    try {
+      const res = await apiFetch(`/plans/${id}/assess/start`, {
+        method: "POST",
+        body: JSON.stringify({ ai_model: assessModel || plan?.ai_model || "claude-sonnet-4-6" }),
+      });
+      await processAssessSSE(res);
+    } catch (err: unknown) {
+      setAssessError(err instanceof Error ? err.message : "Something went wrong");
+      setAssessMessages(prev => prev.filter(m => !m.isStatus));
+    } finally {
+      setAssessLoading(false);
+    }
+  };
+
+  const handleAssessReply = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const text = assessInput.trim();
+    if (!text || assessLoading) return;
+
+    const userMsg: ChatMsg = { role: "user", content: text };
+    setAssessMessages(prev => [...prev, userMsg]);
+    setAssessInput("");
+    setAssessLoading(true);
+    setAssessError("");
+    setAssessPreview(null);
+
+    try {
+      const history = assessMessages.filter(m => !m.isStatus).map(m => ({ role: m.role, content: m.content }));
+      const res = await apiFetch(`/plans/${id}/assess/reply`, {
+        method: "POST",
+        body: JSON.stringify({
+          message: text,
+          history,
+          ai_model: assessModel || plan?.ai_model || "claude-sonnet-4-6",
+        }),
+      });
+      await processAssessSSE(res);
+    } catch (err: unknown) {
+      setAssessError(err instanceof Error ? err.message : "Something went wrong");
+      setAssessMessages(prev => prev.filter(m => !m.isStatus));
+    } finally {
+      setAssessLoading(false);
+    }
+  };
+
+  const handleAssessApply = async () => {
+    if (!assessPreview) return;
+    setAssessSaving(true);
+    try {
+      const res = await apiFetch(`/plans/${id}/assess/apply`, {
+        method: "POST",
+        body: JSON.stringify({ revised_plan_data: assessPreview }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setAssessError(data.detail ?? `HTTP ${res.status}`);
+        return;
+      }
+      const updated = await res.json();
+      setPlan(updated);
+      setAssessOpen(false);
+      setAssessMessages([]);
+      setAssessPreview(null);
+    } catch (err: unknown) {
+      setAssessError(err instanceof Error ? err.message : "Save failed");
+    } finally {
+      setAssessSaving(false);
+    }
+  };
+
+  const handleAssessDismiss = () => {
+    setAssessOpen(false);
+    setAssessMessages([]);
+    setAssessPreview(null);
+    setAssessInput("");
+    setAssessError("");
+  };
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -618,6 +802,44 @@ export default function PlanDetailPage() {
                   </div>
                 )}
               </div>
+              <div ref={adjustMenuRef} className="relative">
+                <button
+                  onClick={(e) => {
+                    setShowPullMenu(false);
+                    setShowExportMenu(false);
+                    setExportSubmenu(null);
+                    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                    setAdjustMenuPos({ top: rect.bottom + 4, left: Math.max(8, Math.min(rect.left, window.innerWidth - 180)) });
+                    setShowAdjustMenu(v => !v);
+                  }}
+                  className="text-amber-600 hover:text-amber-800 text-sm transition-colors"
+                >
+                  Adjust Plan ▾
+                </button>
+                {showAdjustMenu && adjustMenuPos && (
+                  <div style={{ position: "fixed", top: adjustMenuPos.top, left: adjustMenuPos.left }} className="w-44 bg-white border border-gray-200 rounded-xl shadow-lg z-50 py-1 text-sm">
+                    <button
+                      onClick={() => {
+                        setShowAdjustMenu(false);
+                        handleAssessStart();
+                      }}
+                      disabled={assessLoading}
+                      className="w-full text-left px-4 py-2 hover:bg-gray-50 text-gray-800 disabled:text-gray-300"
+                    >
+                      Re-assess Plan
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowAdjustMenu(false);
+                        chatPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+                      }}
+                      className="w-full text-left px-4 py-2 hover:bg-gray-50 text-gray-800"
+                    >
+                      Adjust Plan
+                    </button>
+                  </div>
+                )}
+              </div>
               <button
                 onClick={handleDelete}
                 disabled={deleting}
@@ -657,6 +879,140 @@ export default function PlanDetailPage() {
               setGarminReconnect(false);
             }}
           />
+        )}
+
+        {/* Assessment panel */}
+        {assessOpen && (
+          <div ref={assessPanelRef} className="bg-white rounded-2xl shadow-sm border-2 border-amber-300 overflow-hidden">
+            <div className="px-6 pt-5 pb-3 border-b border-amber-200 bg-amber-50">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-base font-semibold text-amber-900">Plan Assessment</h2>
+                  <p className="text-xs text-amber-600 mt-0.5">
+                    Analyzing your actual training vs the plan. Changes are only applied when you click Save.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <select
+                    value={assessModel ?? chatModel ?? "claude-sonnet-4-6"}
+                    onChange={e => setAssessModel(e.target.value)}
+                    className="border border-amber-200 rounded-lg px-2 py-1 text-xs text-gray-600 focus:outline-none focus:ring-1 focus:ring-amber-400"
+                  >
+                    {AI_MODELS.map(m => (
+                      <option key={m.value} value={m.value}>{m.label} · {m.badge}</option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={handleAssessDismiss}
+                    className="text-gray-400 hover:text-gray-600 text-sm"
+                    title="Close assessment"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Assessment message history */}
+            <div className="px-6 py-4 space-y-3 min-h-[200px] max-h-[60vh] overflow-y-auto">
+              {assessMessages.length === 0 && !assessLoading && (
+                <div className="flex flex-col items-center gap-3 py-6">
+                  <p className="text-sm text-gray-500 text-center">
+                    Analyze your actual training vs the plan and get suggestions for adjustments.
+                  </p>
+                  <button
+                    onClick={handleAssessRun}
+                    className="bg-amber-600 hover:bg-amber-700 text-white font-medium px-6 py-2 rounded-xl text-sm transition-colors"
+                  >
+                    Start Assessment
+                  </button>
+                </div>
+              )}
+              {assessMessages.map((msg, i) => (
+                <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+                  <div
+                    className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap ${
+                      msg.role === "user"
+                        ? "bg-amber-600 text-white rounded-br-sm"
+                        : msg.isStatus
+                        ? "bg-gray-50 text-gray-400 border border-gray-200 rounded-bl-sm italic"
+                        : msg.isPlanUpdate
+                        ? "bg-green-50 text-green-800 border border-green-200 rounded-bl-sm"
+                        : "bg-gray-100 text-gray-800 rounded-bl-sm"
+                    }`}
+                  >
+                    {msg.isStatus && (
+                      <span className="inline-block w-2 h-2 rounded-full bg-gray-300 animate-pulse mr-2" />
+                    )}
+                    {msg.isPlanUpdate && (
+                      <p className="text-xs font-semibold text-green-600 mb-1">Suggested plan changes</p>
+                    )}
+                    {msg.content}
+                  </div>
+                </div>
+              ))}
+              {assessLoading && !assessMessages.some(m => m.isStatus) && (
+                <div className="flex justify-start">
+                  <div className="bg-gray-100 rounded-2xl rounded-bl-sm px-4 py-2.5">
+                    <div className="flex gap-1 items-center h-4">
+                      <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce [animation-delay:0ms]" />
+                      <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce [animation-delay:150ms]" />
+                      <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce [animation-delay:300ms]" />
+                    </div>
+                  </div>
+                </div>
+              )}
+              <div ref={assessBottomRef} />
+            </div>
+
+            {/* Save/Dismiss buttons when preview is ready */}
+            {assessPreview && (
+              <div className="px-6 py-3 border-t border-green-200 bg-green-50 flex items-center gap-3">
+                <button
+                  onClick={handleAssessApply}
+                  disabled={assessSaving}
+                  className="bg-green-600 hover:bg-green-700 disabled:bg-green-300 text-white font-medium px-5 py-2 rounded-xl text-sm transition-colors"
+                >
+                  {assessSaving ? "Saving…" : "Save Changes"}
+                </button>
+                <button
+                  onClick={handleAssessDismiss}
+                  disabled={assessSaving}
+                  className="text-gray-500 hover:text-gray-700 text-sm transition-colors"
+                >
+                  Dismiss
+                </button>
+                <span className="text-xs text-green-600 ml-auto">
+                  Only future workouts will be updated
+                </span>
+              </div>
+            )}
+
+            {/* Assessment input */}
+            {!assessPreview && (
+              <div className="px-4 pb-4">
+                {assessError && <p className="text-xs text-red-500 mb-2 px-2">{assessError}</p>}
+                <form onSubmit={handleAssessReply} className="flex gap-2 items-end">
+                  <textarea
+                    rows={2}
+                    value={assessInput}
+                    onChange={e => setAssessInput(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleAssessReply(e as unknown as React.FormEvent); } }}
+                    disabled={assessLoading}
+                    placeholder="Reply to your coach…"
+                    className="flex-1 border border-gray-300 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 disabled:bg-gray-50 resize-none"
+                  />
+                  <button
+                    type="submit"
+                    disabled={assessLoading || !assessInput.trim()}
+                    className="bg-amber-600 hover:bg-amber-700 disabled:bg-amber-300 text-white font-medium px-4 py-2 rounded-xl text-sm transition-colors"
+                  >
+                    Send
+                  </button>
+                </form>
+              </div>
+            )}
+          </div>
         )}
 
         {/* Weeks */}
@@ -783,7 +1139,7 @@ export default function PlanDetailPage() {
         })}
 
         {/* Chat panel */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+        <div ref={chatPanelRef} className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
           <div className="px-6 pt-5 pb-3 border-b border-gray-100">
             <div className="flex items-start justify-between gap-4">
               <div>

@@ -574,6 +574,186 @@ def build_coached_plan(req: PlanCreateRequest, history: list[ChatMessage], model
     return ClaudePlanResponse.model_validate(data)
 
 
+ASSESS_SYSTEM_PROMPT = """You are an expert running coach reviewing a runner's actual training execution against their planned workouts.
+
+CRITICAL: You MUST respond with ONLY valid JSON. Zero prose. Zero explanation outside JSON. If you output anything other than a raw JSON object, the system will break.
+
+You are in a conversation with the runner. Your job is to:
+1. Analyze how well they've been following the plan (distance, pace, HR, consistency)
+2. Identify patterns: missed workouts, under/over-training, HR compliance issues
+3. Ask 1-3 clarifying questions if needed (injuries? illness? life events?)
+4. When ready, suggest specific adjustments to the REMAINING future weeks only
+
+Respond in one of exactly two JSON formats:
+
+Format 1 — when you need more information or want to share analysis first:
+{"type": "question", "message": "<your analysis and/or clarifying questions>"}
+
+Format 2 — when you have enough context to revise the future plan:
+{"type": "plan", "message": "<brief explanation of what you changed and why>", "plan": <revised future weeks JSON>}
+
+## Conversation flow
+- First message: Share a concise analysis of planned vs actual performance, highlight key patterns (good and bad), then ask 1-3 targeted questions about any gaps or anomalies you noticed
+- Follow-up messages: Refine your understanding based on the runner's answers. When ready, propose changes.
+- When proposing changes: Explain your reasoning clearly, then provide the revised plan
+
+## When to use Format 2 (plan revision)
+- You've identified clear patterns that warrant plan changes
+- The runner has confirmed or provided enough context
+- IMPORTANT: The "plan" field must contain ONLY the future weeks — preserve their original week_number values exactly
+
+## Plan schema (for Format 2 "plan" field)
+The "plan" field must be a COMPLETE set of future weeks:
+{
+  "summary": "<2-3 sentence overview of what changed>",
+  "total_weeks": <number of future weeks included>,
+  "weeks": [
+    {
+      "week_number": <MUST match original week numbering — do NOT renumber>,
+      "theme": "<theme>",
+      "total_km": <float>,
+      "workouts": [
+        {
+          "day_of_week": "<Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday>",
+          "type": "<easy|tempo|long_run|intervals|fartlek|hill_repeats|strides|cross_training|rest|race>",
+          "description": "<instructions with pace min/km, HR zone, RPE>",
+          "distance_km": <float or null>,
+          "duration_minutes": <int or null>,
+          "is_optional": <true|false>
+        }
+      ]
+    }
+  ]
+}
+
+## Key rules
+- ONLY modify future weeks. Past weeks are locked.
+- Preserve the overall plan goals and race date
+- Adjustments should be evidence-based: if the runner is consistently running slower/faster than planned, adjust paces. If they're missing volume, scale back. If they're exceeding expectations, consider progression.
+- Keep the plan's structure and weekly schedule pattern unless the runner requests otherwise
+- Every workout description MUST include pace (min/km), HR zone (% max HR), and RPE
+"""
+
+
+def _build_comparison_context(workouts_with_activities: list, plan_data: dict) -> str:
+    """Build a concise comparison of planned vs actual for past/current workouts."""
+    today = date.today()
+    lines = ["## Planned vs Actual Performance\n"]
+
+    # Group workouts by week
+    weeks: dict[int, list] = {}
+    for w in workouts_with_activities:
+        if w.scheduled_date >= today:
+            continue
+        weeks.setdefault(w.week_number, []).append(w)
+
+    if not weeks:
+        return "No completed weeks to analyze yet."
+
+    for week_num in sorted(weeks.keys()):
+        week_workouts = weeks[week_num]
+        # Find theme from plan_data
+        theme = ""
+        for pw in plan_data.get("weeks", []):
+            if pw.get("week_number") == week_num:
+                theme = pw.get("theme", "")
+                break
+
+        planned_km = sum(w.target_distance_km or 0 for w in week_workouts)
+        actual_km = 0
+        completed = 0
+        total = 0
+
+        week_lines = []
+        for w in sorted(week_workouts, key=lambda x: x.scheduled_date):
+            if w.workout_type == "rest":
+                continue
+            total += 1
+            act = w.activity
+            if act:
+                completed += 1
+                actual_km += act.actual_distance_km or 0
+                pace = None
+                if act.average_speed_ms and act.average_speed_ms > 0:
+                    pace = round(1000 / (act.average_speed_ms * 60), 2)
+                pace_str = f"{int(pace)}:{int((pace % 1) * 60):02d}/km" if pace else "?"
+                score_str = f"score:{act.match_score}" if act.match_score is not None else ""
+                week_lines.append(
+                    f"  {w.day_of_week} {w.workout_type}: "
+                    f"planned {w.target_distance_km or '?'}km → actual {act.actual_distance_km or '?'}km, "
+                    f"pace {pace_str}, HR {round(act.average_hr) if act.average_hr else '?'}bpm "
+                    f"{score_str}"
+                )
+                if act.match_comment:
+                    week_lines.append(f"    Coach note: {act.match_comment}")
+            else:
+                week_lines.append(
+                    f"  {w.day_of_week} {w.workout_type}: "
+                    f"planned {w.target_distance_km or '?'}km → MISSED"
+                )
+
+        completion = f"{completed}/{total}" if total else "0/0"
+        lines.append(f"Week {week_num} ({theme}): {planned_km:.1f}km planned → {actual_km:.1f}km actual, {completion} completed")
+        lines.extend(week_lines)
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+def _extract_future_weeks(plan_data: dict, today: date = None) -> dict:
+    """Extract future weeks from plan_data based on approximate week dates."""
+    if today is None:
+        today = date.today()
+    future_weeks = []
+    for week in plan_data.get("weeks", []):
+        future_weeks.append(week)
+    return {
+        "summary": plan_data.get("summary", ""),
+        "total_weeks": len(future_weeks),
+        "weeks": future_weeks,
+    }
+
+
+def assess_plan_revision(
+    comparison_data: str,
+    future_plan: dict,
+    plan_context: str,
+    history: list[ChatMessage],
+    message: str,
+    model: str = "claude-sonnet-4-6",
+) -> dict:
+    """
+    Conversational plan assessment: analyze planned vs actual, suggest changes.
+    Returns {"type": "question", "message": "..."} or
+            {"type": "plan", "message": "...", "plan": ClaudePlanResponse}.
+    """
+    context = (
+        f"{comparison_data}\n\n"
+        f"## Future plan (weeks to potentially adjust):\n{json.dumps(future_plan)}\n\n"
+        f"## Runner context:\n{plan_context}"
+    )
+
+    messages = []
+    for msg in history:
+        messages.append({"role": msg.role, "content": msg.content})
+    messages.append({"role": "user", "content": message})
+
+    future_week_count = len(future_plan.get("weeks", []))
+    max_tokens = min(max(future_week_count * 1800, 16000), 32000)
+
+    raw_text = _extract_json(_call_model(model, ASSESS_SYSTEM_PROMPT + "\n\n" + context, messages, max_tokens))
+
+    try:
+        data = json.loads(raw_text)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"Claude returned invalid JSON: {e}\nRaw: {raw_text[:500]}")
+
+    if data.get("type") == "plan":
+        data["plan"] = ClaudePlanResponse.model_validate(data["plan"])
+
+    return data
+
+
 STEPS_SYSTEM = """You are a running coach generating Garmin structured workout steps.
 
 You MUST respond with a single JSON object only. No prose. Keys are workout IDs (as strings), values are arrays of steps.

@@ -5,10 +5,12 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session, joinedload
 from database import get_db
-from models.models import TrainingPlan, PlannedWorkout, User
+from models.models import TrainingPlan, PlannedWorkout, WorkoutActivity, User
 from schemas import PlanCreateRequest, PlanOut, PlanReviseRequest, SavePreviewRequest, PreviewChatRequest
 from schemas import ClaudePlanResponse, PlanChatRequest, CoachChatRequest
+from schemas import AssessStartRequest, AssessReplyRequest, AssessApplyRequest
 from services.claude import generate_plan, chat_plan_revision, start_coaching_session, continue_coaching_chat, build_coached_plan, generate_steps_for_workouts
+from services.claude import assess_plan_revision, _build_comparison_context
 from services.auth import get_current_user
 
 router = APIRouter(prefix="/plans", tags=["plans"])
@@ -413,3 +415,213 @@ def chat_adjust(
 
     return StreamingResponse(stream(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+def _load_plan_for_assess(plan_id: int, db: Session, current_user: User) -> TrainingPlan:
+    plan = (
+        db.query(TrainingPlan)
+        .options(joinedload(TrainingPlan.workouts).joinedload(PlannedWorkout.activity))
+        .filter(TrainingPlan.id == plan_id)
+        .first()
+    )
+    if not plan:
+        raise HTTPException(status_code=404, detail="Plan not found")
+    if not _is_authorized(plan, current_user):
+        raise HTTPException(status_code=403, detail="Not authorized")
+    return plan
+
+
+def _build_plan_context(plan: TrainingPlan) -> str:
+    parts = [f"- Goal: {plan.goal_distance} km on {plan.goal_date}" if plan.goal_date
+             else f"- General plan: {plan.plan_duration_weeks} weeks"]
+    parts.append(f"- Schedule: {plan.schedule_description}")
+    parts.append(f"- Injuries: {plan.injuries or 'None'}")
+    parts.append(f"- Notes: {plan.additional_notes or 'None'}")
+    return "\n".join(parts)
+
+
+def _get_future_weeks(plan: TrainingPlan) -> list[dict]:
+    """Get future week numbers based on workouts scheduled from today onwards."""
+    today = date.today()
+    future_week_nums = set()
+    for w in plan.workouts:
+        if w.scheduled_date >= today:
+            future_week_nums.add(w.week_number)
+    return [
+        week for week in plan.plan_data.get("weeks", [])
+        if week.get("week_number") in future_week_nums
+    ]
+
+
+@router.post("/{plan_id}/assess/start")
+def assess_start(
+    plan_id: int,
+    body: AssessStartRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    plan = _load_plan_for_assess(plan_id, db, current_user)
+
+    comparison = _build_comparison_context(plan.workouts, plan.plan_data)
+    future_weeks = _get_future_weeks(plan)
+    future_plan = {
+        "summary": plan.plan_data.get("summary", ""),
+        "total_weeks": len(future_weeks),
+        "weeks": future_weeks,
+    }
+    plan_context = _build_plan_context(plan)
+
+    def stream() -> Generator[str, None, None]:
+        yield _chat_sse({"type": "status", "message": "Analyzing your training…"})
+        try:
+            model = body.ai_model or plan.ai_model or "claude-sonnet-4-6"
+            result = assess_plan_revision(
+                comparison, future_plan, plan_context,
+                history=[],
+                message="Please assess my plan adherence and suggest adjustments to the remaining weeks.",
+                model=model,
+            )
+        except Exception as e:
+            yield _chat_sse({"type": "error", "message": str(e)})
+            return
+
+        if result["type"] == "question":
+            yield _chat_sse({"type": "question", "message": result["message"]})
+        elif result["type"] == "plan":
+            yield _chat_sse({
+                "type": "plan_preview",
+                "message": result["message"],
+                "revised_future_plan": result["plan"].model_dump(),
+            })
+
+    return StreamingResponse(stream(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@router.post("/{plan_id}/assess/reply")
+def assess_reply(
+    plan_id: int,
+    body: AssessReplyRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    plan = _load_plan_for_assess(plan_id, db, current_user)
+
+    comparison = _build_comparison_context(plan.workouts, plan.plan_data)
+    future_weeks = _get_future_weeks(plan)
+    future_plan = {
+        "summary": plan.plan_data.get("summary", ""),
+        "total_weeks": len(future_weeks),
+        "weeks": future_weeks,
+    }
+    plan_context = _build_plan_context(plan)
+
+    def stream() -> Generator[str, None, None]:
+        yield _chat_sse({"type": "status", "message": "Thinking…"})
+        try:
+            model = body.ai_model or plan.ai_model or "claude-sonnet-4-6"
+            result = assess_plan_revision(
+                comparison, future_plan, plan_context,
+                history=body.history,
+                message=body.message,
+                model=model,
+            )
+        except Exception as e:
+            yield _chat_sse({"type": "error", "message": str(e)})
+            return
+
+        if result["type"] == "question":
+            yield _chat_sse({"type": "question", "message": result["message"]})
+        elif result["type"] == "plan":
+            yield _chat_sse({
+                "type": "plan_preview",
+                "message": result["message"],
+                "revised_future_plan": result["plan"].model_dump(),
+            })
+
+    return StreamingResponse(stream(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@router.post("/{plan_id}/assess/apply", response_model=PlanOut)
+def assess_apply(
+    plan_id: int,
+    body: AssessApplyRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    plan = (
+        db.query(TrainingPlan)
+        .options(joinedload(TrainingPlan.workouts).joinedload(PlannedWorkout.activity))
+        .filter(TrainingPlan.id == plan_id)
+        .first()
+    )
+    if not plan:
+        raise HTTPException(status_code=404, detail="Plan not found")
+    if not _is_authorized(plan, current_user):
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    try:
+        revised = ClaudePlanResponse.model_validate(body.revised_plan_data)
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"Invalid plan data: {e}")
+
+    today = date.today()
+    revised_week_nums = {w.week_number for w in revised.weeks}
+
+    # Delete only future PlannedWorkout rows that will be replaced
+    db.query(PlannedWorkout).filter(
+        PlannedWorkout.plan_id == plan.id,
+        PlannedWorkout.scheduled_date >= today,
+    ).delete()
+
+    # Merge plan_data: keep past weeks, replace future weeks
+    existing_weeks = plan.plan_data.get("weeks", [])
+    past_weeks = [w for w in existing_weeks if w.get("week_number") not in revised_week_nums]
+    merged_weeks = past_weeks + [w.model_dump() for w in revised.weeks]
+    merged_weeks.sort(key=lambda w: w.get("week_number", 0))
+
+    plan.plan_data = {
+        **plan.plan_data,
+        "total_weeks": len(merged_weeks),
+        "weeks": merged_weeks,
+    }
+    db.flush()
+
+    # Save only the new future workouts using existing _save_workouts helper logic
+    # We need to compute week_1_start from existing past workouts
+    past_workouts = [w for w in plan.workouts if w.scheduled_date < today]
+    if past_workouts:
+        # Derive week_1_start from the earliest workout
+        earliest = min(w.scheduled_date for w in past_workouts)
+        # week_1_start is the Monday of that week
+        week_1_start = earliest - timedelta(days=earliest.weekday())
+    else:
+        days_until_monday = (7 - today.weekday()) % 7
+        week_1_start = today if today.weekday() == 0 else today + timedelta(days=days_until_monday)
+
+    for week in revised.weeks:
+        for workout in week.workouts:
+            if workout.type == "race" and plan.goal_date:
+                scheduled = plan.goal_date
+            else:
+                scheduled = _compute_scheduled_date(week_1_start, week.week_number, workout.day_of_week)
+                if plan.goal_date and scheduled == plan.goal_date:
+                    continue
+
+            db.add(PlannedWorkout(
+                plan_id=plan.id,
+                week_number=week.week_number,
+                day_of_week=workout.day_of_week,
+                scheduled_date=scheduled,
+                workout_type=workout.type,
+                description=workout.description,
+                target_distance_km=workout.distance_km,
+                target_duration_minutes=workout.duration_minutes,
+                is_optional=workout.is_optional,
+                steps=[s.model_dump() for s in workout.steps],
+            ))
+
+    db.commit()
+    db.refresh(plan)
+    return plan

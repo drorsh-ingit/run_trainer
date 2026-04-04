@@ -18,9 +18,12 @@ _migrations = [
     "ALTER TABLE workout_activities ADD COLUMN IF NOT EXISTS match_comment TEXT",
 ]
 for stmt in _migrations:
-    with engine.connect() as conn:
-        conn.execute(text(stmt))
-        conn.commit()
+    try:
+        with engine.connect() as conn:
+            conn.execute(text(stmt))
+            conn.commit()
+    except Exception:
+        pass  # column already exists or syntax not supported
 
 app = FastAPI(title="Run Trainer API", version="0.1.0")
 

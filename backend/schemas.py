@@ -124,6 +124,20 @@ class CoachChatRequest(PlanCreateRequest):
     history: List[ChatMessage] = []
 
 
+# ---- Plan assessment (planned vs actual) ----
+
+class AssessStartRequest(BaseModel):
+    ai_model: Optional[str] = Field(None, description="Override model; defaults to plan's stored model")
+
+class AssessReplyRequest(BaseModel):
+    message: str = Field(..., min_length=1)
+    history: List[ChatMessage] = []
+    ai_model: Optional[str] = Field(None, description="Override model; defaults to plan's stored model")
+
+class AssessApplyRequest(BaseModel):
+    revised_plan_data: dict
+
+
 # ---- Preview revision (unsaved) ----
 
 class PlanReviseRequest(BaseModel):
