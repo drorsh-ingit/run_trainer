@@ -440,6 +440,15 @@ def _build_plan_context(plan: TrainingPlan) -> str:
     return "\n".join(parts)
 
 
+def _get_unmatched_activities(plan_id: int, db: Session) -> list:
+    """Get activities synced to this plan that didn't match any planned workout."""
+    return (
+        db.query(WorkoutActivity)
+        .filter(WorkoutActivity.plan_id == plan_id, WorkoutActivity.workout_id.is_(None))
+        .all()
+    )
+
+
 def _get_future_weeks(plan: TrainingPlan) -> list[dict]:
     """Get future week numbers based on workouts scheduled from today onwards."""
     today = date.today()
@@ -461,8 +470,9 @@ def assess_start(
     current_user: User = Depends(get_current_user),
 ):
     plan = _load_plan_for_assess(plan_id, db, current_user)
+    unmatched = _get_unmatched_activities(plan_id, db)
 
-    comparison = _build_comparison_context(plan.workouts, plan.plan_data)
+    comparison = _build_comparison_context(plan.workouts, plan.plan_data, unmatched)
     future_weeks = _get_future_weeks(plan)
     future_plan = {
         "summary": plan.plan_data.get("summary", ""),
@@ -506,8 +516,9 @@ def assess_reply(
     current_user: User = Depends(get_current_user),
 ):
     plan = _load_plan_for_assess(plan_id, db, current_user)
+    unmatched = _get_unmatched_activities(plan_id, db)
 
-    comparison = _build_comparison_context(plan.workouts, plan.plan_data)
+    comparison = _build_comparison_context(plan.workouts, plan.plan_data, unmatched)
     future_weeks = _get_future_weeks(plan)
     future_plan = {
         "summary": plan.plan_data.get("summary", ""),

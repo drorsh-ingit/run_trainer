@@ -635,7 +635,7 @@ The "plan" field must be a COMPLETE set of future weeks:
 """
 
 
-def _build_comparison_context(workouts_with_activities: list, plan_data: dict) -> str:
+def _build_comparison_context(workouts_with_activities: list, plan_data: dict, unmatched_activities: list = None) -> str:
     """Build a concise comparison of planned vs actual for past/current workouts."""
     today = date.today()
     lines = ["## Planned vs Actual Performance\n"]
@@ -643,11 +643,12 @@ def _build_comparison_context(workouts_with_activities: list, plan_data: dict) -
     # Group workouts by week
     weeks: dict[int, list] = {}
     for w in workouts_with_activities:
-        if w.scheduled_date >= today:
+        # Include past workouts and today's workouts that have a synced activity
+        if w.scheduled_date > today or (w.scheduled_date == today and not w.activity):
             continue
         weeks.setdefault(w.week_number, []).append(w)
 
-    if not weeks:
+    if not weeks and not unmatched_activities:
         return "No completed weeks to analyze yet."
 
     for week_num in sorted(weeks.keys()):
@@ -695,6 +696,22 @@ def _build_comparison_context(workouts_with_activities: list, plan_data: dict) -
         completion = f"{completed}/{total}" if total else "0/0"
         lines.append(f"Week {week_num} ({theme}): {planned_km:.1f}km planned → {actual_km:.1f}km actual, {completion} completed")
         lines.extend(week_lines)
+        lines.append("")
+
+    # Unmatched activities — runs done that didn't match any planned workout
+    if unmatched_activities:
+        lines.append("## Additional runs (not matching any planned workout)\n")
+        for act in sorted(unmatched_activities, key=lambda a: a.start_date or a.synced_at):
+            pace = None
+            if act.average_speed_ms and act.average_speed_ms > 0:
+                pace = round(1000 / (act.average_speed_ms * 60), 2)
+            pace_str = f"{int(pace)}:{int((pace % 1) * 60):02d}/km" if pace else "?"
+            act_date = (act.start_date.strftime("%Y-%m-%d") if act.start_date else "?")
+            lines.append(
+                f"  {act_date}: {act.name or 'Run'} — "
+                f"{act.actual_distance_km or '?'}km, "
+                f"pace {pace_str}, HR {round(act.average_hr) if act.average_hr else '?'}bpm"
+            )
         lines.append("")
 
     return "\n".join(lines)
