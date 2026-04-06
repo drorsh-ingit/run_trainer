@@ -16,6 +16,10 @@
 **Context:** `_build_comparison_context` filtered `scheduled_date >= today`, excluding workouts done today even when they had synced activities. The coach then claimed the user hadn't done a run they'd actually completed.
 **Rule:** When building historical comparison data, include today's entries if they have associated completion data (e.g., a synced activity). Use `scheduled_date > today or (scheduled_date == today and not completed)` as the exclusion filter.
 
+## UX: Match progress feedback to the actual phase of work
+**Context:** The progress bar (with step-by-step labels) ran during every SSE call — including quick Q&A exchanges where it was misleading and unnecessary.
+**Rule:** Only show heavy progress indicators (progress bars, step lists) during genuinely long operations like plan generation. Use lightweight indicators (bouncing dots) for quick back-and-forth exchanges.
+
 ## Data: Include ALL relevant data in AI prompts
 **Context:** Unmatched Strava activities (runs that didn't match any planned workout) were not included in the assessment prompt. The coach only saw matched workouts, missing significant training volume.
 **Rule:** When building context for plan assessment, query and include unmatched activities (`WorkoutActivity` with `workout_id=NULL`) so the AI has the full picture of actual training load.
