@@ -574,36 +574,35 @@ def build_coached_plan(req: PlanCreateRequest, history: list[ChatMessage], model
     return ClaudePlanResponse.model_validate(data)
 
 
-ASSESS_SYSTEM_PROMPT = """You are an expert running coach reviewing a runner's actual training execution against their planned workouts.
+ASSESS_QA_PROMPT = """You are an expert running coach reviewing a runner's actual training execution against their planned workouts.
 
-CRITICAL: You MUST respond with ONLY valid JSON. Zero prose. Zero explanation outside JSON. If you output anything other than a raw JSON object, the system will break.
+CRITICAL: You MUST respond with ONLY valid JSON. Zero prose outside JSON.
 
 You are in a conversation with the runner. Your job is to:
 1. Analyze how well they've been following the plan (distance, pace, HR, consistency)
 2. Identify patterns: missed workouts, under/over-training, HR compliance issues
 3. Ask 1-3 clarifying questions if needed (injuries? illness? life events?)
-4. When ready, suggest specific adjustments to the REMAINING future weeks only
+4. When you have enough context, declare you're ready to suggest changes
 
 Respond in one of exactly two JSON formats:
 
 Format 1 — when you need more information or want to share analysis first:
 {"type": "question", "message": "<your analysis and/or clarifying questions>"}
 
-Format 2 — when you have enough context to revise the future plan:
-{"type": "plan", "message": "<brief explanation of what you changed and why>", "plan": <revised future weeks JSON>}
+Format 2 — when you have enough context and are ready to build a revised plan:
+{"type": "ready", "message": "<brief summary of what you plan to change and why>"}
 
 ## Conversation flow
 - First message: Share a concise analysis of planned vs actual performance, highlight key patterns (good and bad), then ask 1-3 targeted questions about any gaps or anomalies you noticed
-- Follow-up messages: Refine your understanding based on the runner's answers. When ready, propose changes.
-- When proposing changes: Explain your reasoning clearly, then provide the revised plan
+- Follow-up messages: Refine your understanding based on the runner's answers
+- Declare ready after 1-2 exchanges once you have meaningful context
+- Be warm, specific, and coach-like — not robotic
+"""
 
-## When to use Format 2 (plan revision)
-- You've identified clear patterns that warrant plan changes
-- The runner has confirmed or provided enough context
-- IMPORTANT: The "plan" field must contain ONLY the future weeks — preserve their original week_number values exactly
+ASSESS_BUILD_PROMPT = """You are an expert running coach revising a runner's training plan based on their actual performance data.
 
-## Plan schema (for Format 2 "plan" field)
-The "plan" field must be a COMPLETE set of future weeks:
+You MUST respond with valid JSON only. No prose before or after. The JSON must match this exact schema:
+
 {
   "summary": "<2-3 sentence overview of what changed>",
   "total_weeks": <number of future weeks included>,
@@ -627,7 +626,8 @@ The "plan" field must be a COMPLETE set of future weeks:
 }
 
 ## Key rules
-- ONLY modify future weeks. Past weeks are locked.
+- ONLY output the future weeks. Past weeks are locked.
+- Preserve original week_number values exactly — do NOT renumber
 - Preserve the overall plan goals and race date
 - Adjustments should be evidence-based: if the runner is consistently running slower/faster than planned, adjust paces. If they're missing volume, scale back. If they're exceeding expectations, consider progression.
 - Keep the plan's structure and weekly schedule pattern unless the runner requests otherwise
@@ -731,7 +731,7 @@ def _extract_future_weeks(plan_data: dict, today: date = None) -> dict:
     }
 
 
-def assess_plan_revision(
+def assess_plan_chat(
     comparison_data: str,
     future_plan: dict,
     plan_context: str,
@@ -740,9 +740,9 @@ def assess_plan_revision(
     model: str = "claude-sonnet-4-6",
 ) -> dict:
     """
-    Conversational plan assessment: analyze planned vs actual, suggest changes.
+    Q&A phase of plan assessment.
     Returns {"type": "question", "message": "..."} or
-            {"type": "plan", "message": "...", "plan": ClaudePlanResponse}.
+            {"type": "ready", "message": "..."}.
     """
     context = (
         f"{comparison_data}\n\n"
@@ -755,22 +755,50 @@ def assess_plan_revision(
         messages.append({"role": msg.role, "content": msg.content})
     messages.append({"role": "user", "content": message})
 
-    future_week_count = len(future_plan.get("weeks", []))
-    max_tokens = min(max(future_week_count * 1800, 16000), 32000)
-
-    raw_response = _call_model(model, ASSESS_SYSTEM_PROMPT + "\n\n" + context, messages, max_tokens)
+    raw_response = _call_model(model, ASSESS_QA_PROMPT + "\n\n" + context, messages, 2048)
     raw_text = _extract_json(raw_response)
 
     try:
-        data = json.loads(raw_text)
+        return json.loads(raw_text)
     except json.JSONDecodeError:
-        # Claude broke out of JSON format — treat the raw prose as a conversational reply
         return {"type": "question", "message": raw_response.strip()}
 
-    if data.get("type") == "plan":
-        data["plan"] = ClaudePlanResponse.model_validate(data["plan"])
 
-    return data
+def assess_build_plan(
+    comparison_data: str,
+    future_plan: dict,
+    plan_context: str,
+    history: list[ChatMessage],
+    model: str = "claude-sonnet-4-6",
+) -> ClaudePlanResponse:
+    """
+    Build the revised future plan based on the assessment conversation.
+    Returns a ClaudePlanResponse with only future weeks.
+    """
+    convo = "\n".join(
+        f"{'Runner' if m.role == 'user' else 'Coach'}: {m.content}"
+        for m in history
+    )
+
+    build_prompt = (
+        f"Based on this coaching assessment conversation, build a revised plan for the remaining weeks.\n\n"
+        f"## Assessment conversation:\n{convo}\n\n"
+        f"{comparison_data}\n\n"
+        f"## Current future plan (to revise):\n{json.dumps(future_plan)}\n\n"
+        f"## Runner context:\n{plan_context}"
+    )
+
+    future_week_count = len(future_plan.get("weeks", []))
+    max_tokens = min(max(future_week_count * 1800, 16000), 32000)
+
+    raw_text = _extract_json(_call_model(model, ASSESS_BUILD_PROMPT, [{"role": "user", "content": build_prompt}], max_tokens))
+
+    try:
+        data = json.loads(raw_text)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"Claude returned invalid JSON: {e}\nRaw: {raw_text[:500]}")
+
+    return ClaudePlanResponse.model_validate(data)
 
 
 STEPS_SYSTEM = """You are a running coach generating Garmin structured workout steps.

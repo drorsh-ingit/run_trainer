@@ -10,7 +10,7 @@ from schemas import PlanCreateRequest, PlanOut, PlanReviseRequest, SavePreviewRe
 from schemas import ClaudePlanResponse, PlanChatRequest, CoachChatRequest
 from schemas import AssessStartRequest, AssessReplyRequest, AssessApplyRequest
 from services.claude import generate_plan, chat_plan_revision, start_coaching_session, continue_coaching_chat, build_coached_plan, generate_steps_for_workouts
-from services.claude import assess_plan_revision, _build_comparison_context
+from services.claude import assess_plan_chat, assess_build_plan, _build_comparison_context
 from services.auth import get_current_user
 
 router = APIRouter(prefix="/plans", tags=["plans"])
@@ -462,16 +462,9 @@ def _get_future_weeks(plan: TrainingPlan) -> list[dict]:
     ]
 
 
-@router.post("/{plan_id}/assess/start")
-def assess_start(
-    plan_id: int,
-    body: AssessStartRequest,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    plan = _load_plan_for_assess(plan_id, db, current_user)
+def _assess_data(plan_id: int, plan: TrainingPlan, db: Session):
+    """Gather comparison data and future plan for assessment endpoints."""
     unmatched = _get_unmatched_activities(plan_id, db)
-
     comparison = _build_comparison_context(plan.workouts, plan.plan_data, unmatched)
     future_weeks = _get_future_weeks(plan)
     future_plan = {
@@ -480,12 +473,24 @@ def assess_start(
         "weeks": future_weeks,
     }
     plan_context = _build_plan_context(plan)
+    return comparison, future_plan, plan_context
+
+
+@router.post("/{plan_id}/assess/start")
+def assess_start(
+    plan_id: int,
+    body: AssessStartRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    plan = _load_plan_for_assess(plan_id, db, current_user)
+    comparison, future_plan, plan_context = _assess_data(plan_id, plan, db)
 
     def stream() -> Generator[str, None, None]:
         yield _chat_sse({"type": "status", "message": "Analyzing your training…"})
         try:
             model = body.ai_model or plan.ai_model or "claude-sonnet-4-6"
-            result = assess_plan_revision(
+            result = assess_plan_chat(
                 comparison, future_plan, plan_context,
                 history=[],
                 message="Please assess my plan adherence and suggest adjustments to the remaining weeks.",
@@ -495,14 +500,10 @@ def assess_start(
             yield _chat_sse({"type": "error", "message": str(e)})
             return
 
-        if result["type"] == "question":
+        if result["type"] == "ready":
+            yield _chat_sse({"type": "ready", "message": result["message"]})
+        else:
             yield _chat_sse({"type": "question", "message": result["message"]})
-        elif result["type"] == "plan":
-            yield _chat_sse({
-                "type": "plan_preview",
-                "message": result["message"],
-                "revised_future_plan": result["plan"].model_dump(),
-            })
 
     return StreamingResponse(stream(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
@@ -516,22 +517,13 @@ def assess_reply(
     current_user: User = Depends(get_current_user),
 ):
     plan = _load_plan_for_assess(plan_id, db, current_user)
-    unmatched = _get_unmatched_activities(plan_id, db)
-
-    comparison = _build_comparison_context(plan.workouts, plan.plan_data, unmatched)
-    future_weeks = _get_future_weeks(plan)
-    future_plan = {
-        "summary": plan.plan_data.get("summary", ""),
-        "total_weeks": len(future_weeks),
-        "weeks": future_weeks,
-    }
-    plan_context = _build_plan_context(plan)
+    comparison, future_plan, plan_context = _assess_data(plan_id, plan, db)
 
     def stream() -> Generator[str, None, None]:
         yield _chat_sse({"type": "status", "message": "Thinking…"})
         try:
             model = body.ai_model or plan.ai_model or "claude-sonnet-4-6"
-            result = assess_plan_revision(
+            result = assess_plan_chat(
                 comparison, future_plan, plan_context,
                 history=body.history,
                 message=body.message,
@@ -541,14 +533,46 @@ def assess_reply(
             yield _chat_sse({"type": "error", "message": str(e)})
             return
 
-        if result["type"] == "question":
+        if result["type"] == "ready":
+            yield _chat_sse({"type": "ready", "message": result["message"]})
+        else:
             yield _chat_sse({"type": "question", "message": result["message"]})
-        elif result["type"] == "plan":
-            yield _chat_sse({
-                "type": "plan_preview",
-                "message": result["message"],
-                "revised_future_plan": result["plan"].model_dump(),
-            })
+
+    return StreamingResponse(stream(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@router.post("/{plan_id}/assess/build")
+def assess_build(
+    plan_id: int,
+    body: AssessReplyRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Build the revised plan after Q&A is complete. This is the slow step."""
+    plan = _load_plan_for_assess(plan_id, db, current_user)
+    comparison, future_plan, plan_context = _assess_data(plan_id, plan, db)
+
+    def stream() -> Generator[str, None, None]:
+        yield _chat_sse({"type": "status", "message": "Building revised plan…"})
+        try:
+            model = body.ai_model or plan.ai_model or "claude-sonnet-4-6"
+            from schemas import ChatMessage
+            chat_history = [ChatMessage(role=m.role, content=m.content) for m in body.history]
+            revised = assess_build_plan(
+                comparison, future_plan, plan_context,
+                history=chat_history,
+                model=model,
+            )
+        except Exception as e:
+            yield _chat_sse({"type": "error", "message": str(e)})
+            return
+
+        yield _chat_sse({
+            "type": "plan_preview",
+            "message": revised.summary,
+            "revised_future_plan": revised.model_dump(),
+        })
 
     return StreamingResponse(stream(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})

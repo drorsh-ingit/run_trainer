@@ -155,6 +155,7 @@ export default function PlanDetailPage() {
   const [assessPreview, setAssessPreview] = useState<Record<string, unknown> | null>(null);
   const [assessSaving, setAssessSaving] = useState(false);
   const [assessGenerating, setAssessGenerating] = useState(false);
+  const [assessReady, setAssessReady] = useState(false);
   const [assessModel, setAssessModel] = useState<string | null>(null);
   const assessBottomRef = useRef<HTMLDivElement>(null);
   const assessPanelRef = useRef<HTMLDivElement>(null);
@@ -429,6 +430,12 @@ export default function PlanDetailPage() {
               const next = prev.filter(m => !m.isStatus);
               return [...next, { role: "assistant", content: evt.message }];
             });
+          } else if (evt.type === "ready") {
+            setAssessReady(true);
+            setAssessMessages(prev => {
+              const next = prev.filter(m => !m.isStatus);
+              return [...next, { role: "assistant", content: evt.message }];
+            });
           } else if (evt.type === "plan_preview") {
             setAssessPreview(evt.revised_future_plan);
             setAssessMessages(prev => {
@@ -448,6 +455,7 @@ export default function PlanDetailPage() {
     setAssessOpen(true);
     setAssessMessages([]);
     setAssessPreview(null);
+    setAssessReady(false);
     setAssessError("");
     if (!assessModel && plan) setAssessModel(plan.ai_model ?? "claude-sonnet-4-6");
   };
@@ -503,6 +511,31 @@ export default function PlanDetailPage() {
     }
   };
 
+  const handleAssessBuild = async () => {
+    setAssessGenerating(true);
+    setAssessLoading(true);
+    setAssessError("");
+
+    try {
+      const history = assessMessages.filter(m => !m.isStatus).map(m => ({ role: m.role, content: m.content }));
+      const res = await apiFetch(`/plans/${id}/assess/build`, {
+        method: "POST",
+        body: JSON.stringify({
+          message: "",
+          history,
+          ai_model: assessModel || plan?.ai_model || "claude-sonnet-4-6",
+        }),
+      });
+      await processAssessSSE(res);
+    } catch (err: unknown) {
+      setAssessError(err instanceof Error ? err.message : "Something went wrong");
+      setAssessMessages(prev => prev.filter(m => !m.isStatus));
+    } finally {
+      setAssessLoading(false);
+      setAssessGenerating(false);
+    }
+  };
+
   const handleAssessApply = async () => {
     if (!assessPreview) return;
     setAssessSaving(true);
@@ -532,6 +565,8 @@ export default function PlanDetailPage() {
     setAssessOpen(false);
     setAssessMessages([]);
     setAssessPreview(null);
+    setAssessReady(false);
+    setAssessGenerating(false);
     setAssessInput("");
     setAssessError("");
   };
@@ -994,28 +1029,41 @@ export default function PlanDetailPage() {
               </div>
             )}
 
-            {/* Assessment input */}
-            {!assessPreview && (
+            {/* Build button when coach is ready, or chat input for Q&A */}
+            {!assessPreview && !assessGenerating && (
               <div className="px-4 pb-4">
                 {assessError && <p className="text-xs text-red-500 mb-2 px-2">{assessError}</p>}
-                <form onSubmit={handleAssessReply} className="flex gap-2 items-end">
-                  <textarea
-                    rows={2}
-                    value={assessInput}
-                    onChange={e => setAssessInput(e.target.value)}
-                    onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleAssessReply(e as unknown as React.FormEvent); } }}
-                    disabled={assessLoading}
-                    placeholder="Reply to your coach…"
-                    className="flex-1 border border-gray-300 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 disabled:bg-gray-50 resize-none"
-                  />
-                  <button
-                    type="submit"
-                    disabled={assessLoading || !assessInput.trim()}
-                    className="bg-amber-600 hover:bg-amber-700 disabled:bg-amber-300 text-white font-medium px-4 py-2 rounded-xl text-sm transition-colors"
-                  >
-                    Send
-                  </button>
-                </form>
+                {assessReady ? (
+                  <div className="flex flex-col items-center gap-2 py-2">
+                    <button
+                      onClick={handleAssessBuild}
+                      disabled={assessLoading}
+                      className="bg-amber-600 hover:bg-amber-700 disabled:bg-amber-300 text-white font-medium px-6 py-2.5 rounded-xl text-sm transition-colors"
+                    >
+                      Build Revised Plan
+                    </button>
+                    <p className="text-xs text-gray-400">This may take a minute</p>
+                  </div>
+                ) : (
+                  <form onSubmit={handleAssessReply} className="flex gap-2 items-end">
+                    <textarea
+                      rows={2}
+                      value={assessInput}
+                      onChange={e => setAssessInput(e.target.value)}
+                      onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleAssessReply(e as unknown as React.FormEvent); } }}
+                      disabled={assessLoading}
+                      placeholder="Reply to your coach…"
+                      className="flex-1 border border-gray-300 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 disabled:bg-gray-50 resize-none"
+                    />
+                    <button
+                      type="submit"
+                      disabled={assessLoading || !assessInput.trim()}
+                      className="bg-amber-600 hover:bg-amber-700 disabled:bg-amber-300 text-white font-medium px-4 py-2 rounded-xl text-sm transition-colors"
+                    >
+                      Send
+                    </button>
+                  </form>
+                )}
               </div>
             )}
           </div>
