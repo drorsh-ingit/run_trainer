@@ -17,8 +17,8 @@
 **Rule:** When building historical comparison data, include today's entries if they have associated completion data (e.g., a synced activity). Use `scheduled_date > today or (scheduled_date == today and not completed)` as the exclusion filter.
 
 ## UX: Match progress feedback to the actual phase of work
-**Context:** The progress bar (with step-by-step labels) ran during every SSE call — including quick Q&A exchanges where it was misleading and unnecessary.
-**Rule:** Only show heavy progress indicators (progress bars, step lists) during genuinely long operations like plan generation. Use lightweight indicators (bouncing dots) for quick back-and-forth exchanges.
+**Context:** The progress bar (with step-by-step labels) ran during every SSE call — including quick Q&A exchanges where it was misleading and unnecessary. First fix (tying to initial call only) was wrong — the progress should show during the *final* plan generation phase, not the initial one.
+**Rule:** When an AI flow has both fast (Q&A) and slow (generation) phases, split them into separate API calls. Show lightweight indicators (bouncing dots) for fast phases and progress bars for the slow phase. Let the user explicitly trigger the slow phase with a button so it's clear when the long wait starts. Follow the coaching flow pattern: Q&A prompt → ready signal → build prompt.
 
 ## Data: Include ALL relevant data in AI prompts
 **Context:** Unmatched Strava activities (runs that didn't match any planned workout) were not included in the assessment prompt. The coach only saw matched workouts, missing significant training volume.
