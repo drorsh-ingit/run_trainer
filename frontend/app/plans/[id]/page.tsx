@@ -156,6 +156,7 @@ export default function PlanDetailPage() {
   const [assessSaving, setAssessSaving] = useState(false);
   const [assessGenerating, setAssessGenerating] = useState(false);
   const [assessReady, setAssessReady] = useState(false);
+  const [diffExpanded, setDiffExpanded] = useState<Set<number>>(new Set());
   const [assessModel, setAssessModel] = useState<string | null>(null);
   const assessBottomRef = useRef<HTMLDivElement>(null);
   const assessPanelRef = useRef<HTMLDivElement>(null);
@@ -462,7 +463,6 @@ export default function PlanDetailPage() {
 
   const handleAssessRun = async () => {
     setAssessLoading(true);
-    setAssessGenerating(true);
     setAssessError("");
 
     try {
@@ -476,7 +476,6 @@ export default function PlanDetailPage() {
       setAssessMessages(prev => prev.filter(m => !m.isStatus));
     } finally {
       setAssessLoading(false);
-      setAssessGenerating(false);
     }
   };
 
@@ -559,6 +558,12 @@ export default function PlanDetailPage() {
     } finally {
       setAssessSaving(false);
     }
+  };
+
+  const handleAssessContinue = () => {
+    setAssessPreview(null);
+    setAssessReady(false);
+    // Messages stay — user can type follow-up adjustments
   };
 
   const handleAssessDismiss = () => {
@@ -1006,28 +1011,103 @@ export default function PlanDetailPage() {
               <div ref={assessBottomRef} />
             </div>
 
-            {/* Save/Dismiss buttons when preview is ready */}
-            {assessPreview && (
-              <div className="px-6 py-3 border-t border-green-200 bg-green-50 flex items-center gap-3">
-                <button
-                  onClick={handleAssessApply}
-                  disabled={assessSaving}
-                  className="bg-green-600 hover:bg-green-700 disabled:bg-green-300 text-white font-medium px-5 py-2 rounded-xl text-sm transition-colors"
-                >
-                  {assessSaving ? "Saving…" : "Save Changes"}
-                </button>
-                <button
-                  onClick={handleAssessDismiss}
-                  disabled={assessSaving}
-                  className="text-gray-500 hover:text-gray-700 text-sm transition-colors"
-                >
-                  Dismiss
-                </button>
-                <span className="text-xs text-green-600 ml-auto">
-                  Only future workouts will be updated
-                </span>
-              </div>
-            )}
+            {/* Diff + actions when preview is ready */}
+            {assessPreview && plan && (() => {
+              const oldWeeks = (plan.plan_data?.weeks ?? []) as { week_number: number; theme?: string; total_km?: number; workouts?: { day_of_week: string; type: string; distance_km?: number | null; duration_minutes?: number | null }[] }[];
+              const newWeeks = ((assessPreview as { weeks?: unknown[] }).weeks ?? []) as typeof oldWeeks;
+              return (
+                <>
+                  <div className="px-6 py-4 border-t border-amber-200 bg-amber-50 space-y-2 max-h-[50vh] overflow-y-auto">
+                    <h3 className="text-sm font-semibold text-amber-900">Proposed Changes</h3>
+                    {newWeeks.map(nw => {
+                      const ow = oldWeeks.find(w => w.week_number === nw.week_number);
+                      const oldKm = ow?.total_km ?? 0;
+                      const newKm = nw.total_km ?? 0;
+                      const kmDiff = newKm - oldKm;
+                      const isExpanded = diffExpanded.has(nw.week_number);
+                      const toggleExpand = () => setDiffExpanded(prev => {
+                        const next = new Set(prev);
+                        next.has(nw.week_number) ? next.delete(nw.week_number) : next.add(nw.week_number);
+                        return next;
+                      });
+
+                      return (
+                        <div key={nw.week_number} className="border border-amber-200 rounded-lg bg-white">
+                          <button
+                            onClick={toggleExpand}
+                            className="w-full text-left px-3 py-2 flex items-center justify-between text-sm hover:bg-amber-50"
+                          >
+                            <span className="font-medium text-gray-800">
+                              Week {nw.week_number}
+                              {nw.theme && <span className="text-gray-400 font-normal ml-1">({nw.theme})</span>}
+                            </span>
+                            <span className="flex items-center gap-2 text-xs">
+                              <span className="text-gray-400">{oldKm.toFixed(1)} km</span>
+                              <span className="text-gray-400">&rarr;</span>
+                              <span className={kmDiff > 0 ? "text-green-600 font-medium" : kmDiff < 0 ? "text-red-600 font-medium" : "text-gray-500"}>
+                                {newKm.toFixed(1)} km
+                                {kmDiff !== 0 && ` (${kmDiff > 0 ? "+" : ""}${kmDiff.toFixed(1)})`}
+                              </span>
+                              <span className="text-gray-300 ml-1">{isExpanded ? "▾" : "▸"}</span>
+                            </span>
+                          </button>
+                          {isExpanded && (
+                            <div className="px-3 pb-2 space-y-1 border-t border-amber-100">
+                              {(nw.workouts ?? []).map((nwk, wi) => {
+                                const owk = ow?.workouts?.[wi];
+                                const oldType = owk?.type ?? "—";
+                                const oldDist = owk?.distance_km;
+                                const changed = oldType !== nwk.type || oldDist !== nwk.distance_km;
+                                return (
+                                  <div key={wi} className={`flex items-center gap-2 text-xs py-0.5 ${changed ? "text-amber-800" : "text-gray-400"}`}>
+                                    <span className="w-20 shrink-0">{nwk.day_of_week}</span>
+                                    {changed ? (
+                                      <>
+                                        <span className="text-gray-400 line-through">{oldType.replace(/_/g, " ")} {oldDist != null ? `${oldDist}km` : ""}</span>
+                                        <span className="text-gray-300">&rarr;</span>
+                                        <span className="font-medium">{nwk.type.replace(/_/g, " ")} {nwk.distance_km != null ? `${nwk.distance_km}km` : ""}</span>
+                                      </>
+                                    ) : (
+                                      <span>{nwk.type.replace(/_/g, " ")} {nwk.distance_km != null ? `${nwk.distance_km}km` : ""}</span>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="px-6 py-3 border-t border-green-200 bg-green-50 flex items-center gap-3">
+                    <button
+                      onClick={handleAssessApply}
+                      disabled={assessSaving}
+                      className="bg-green-600 hover:bg-green-700 disabled:bg-green-300 text-white font-medium px-5 py-2 rounded-xl text-sm transition-colors"
+                    >
+                      {assessSaving ? "Saving…" : "Save Changes"}
+                    </button>
+                    <button
+                      onClick={handleAssessContinue}
+                      disabled={assessSaving}
+                      className="bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 text-white font-medium px-4 py-2 rounded-xl text-sm transition-colors"
+                    >
+                      Continue Adjusting
+                    </button>
+                    <button
+                      onClick={handleAssessDismiss}
+                      disabled={assessSaving}
+                      className="text-gray-500 hover:text-gray-700 text-sm transition-colors"
+                    >
+                      Dismiss
+                    </button>
+                    <span className="text-xs text-green-600 ml-auto">
+                      Only future workouts will be updated
+                    </span>
+                  </div>
+                </>
+              );
+            })()}
 
             {/* Build button when coach is ready, or chat input for Q&A */}
             {!assessPreview && !assessGenerating && (
