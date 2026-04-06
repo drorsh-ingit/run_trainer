@@ -154,6 +154,7 @@ export default function PlanDetailPage() {
   const [assessError, setAssessError] = useState("");
   const [assessPreview, setAssessPreview] = useState<Record<string, unknown> | null>(null);
   const [assessSaving, setAssessSaving] = useState(false);
+  const [assessGenerating, setAssessGenerating] = useState(false);
   const [assessModel, setAssessModel] = useState<string | null>(null);
   const assessBottomRef = useRef<HTMLDivElement>(null);
   const assessPanelRef = useRef<HTMLDivElement>(null);
@@ -453,6 +454,7 @@ export default function PlanDetailPage() {
 
   const handleAssessRun = async () => {
     setAssessLoading(true);
+    setAssessGenerating(true);
     setAssessError("");
 
     try {
@@ -466,6 +468,7 @@ export default function PlanDetailPage() {
       setAssessMessages(prev => prev.filter(m => !m.isStatus));
     } finally {
       setAssessLoading(false);
+      setAssessGenerating(false);
     }
   };
 
@@ -952,7 +955,19 @@ export default function PlanDetailPage() {
                   </div>
                 </div>
               ))}
-              <GeneratingProgress active={assessLoading} mode="assess" />
+              {assessGenerating ? (
+                <GeneratingProgress active={true} mode="assess" />
+              ) : assessLoading && !assessMessages.some(m => m.isStatus) ? (
+                <div className="flex justify-start">
+                  <div className="bg-gray-100 rounded-2xl rounded-bl-sm px-4 py-2.5">
+                    <div className="flex gap-1 items-center h-4">
+                      <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce [animation-delay:0ms]" />
+                      <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce [animation-delay:150ms]" />
+                      <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce [animation-delay:300ms]" />
+                    </div>
+                  </div>
+                </div>
+              ) : null}
               <div ref={assessBottomRef} />
             </div>
 
