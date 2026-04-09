@@ -16,7 +16,10 @@ type WorkoutActivity = {
   average_hr: number | null;
   average_pace_min_per_km: number | null;
   hr_zones: number[] | null;
+  elevation_gain: number | null;
+  elevation_loss: number | null;
   has_streams: boolean;
+  laps: { lap_index: number; name: string | null; distance: number; moving_time: number; average_speed: number | null; average_heartrate: number | null; elevation_gain: number | null; elevation_loss: number | null; hr_zones: number[] | null }[] | null;
   match_score: number | null;
   match_comment: string | null;
 };
@@ -401,7 +404,8 @@ export default function PlanDetailPage() {
   const processAssessSSE = async (res: Response) => {
     if (!res.ok || !res.body) {
       const data = await res.json().catch(() => ({}));
-      setAssessError(data.detail ?? `HTTP ${res.status}`);
+      const detail = data.detail;
+      setAssessError(typeof detail === "string" ? detail : detail ? JSON.stringify(detail) : `HTTP ${res.status}`);
       return;
     }
     const reader = res.body.getReader();
@@ -1013,16 +1017,20 @@ export default function PlanDetailPage() {
 
             {/* Diff + actions when preview is ready */}
             {assessPreview && plan && (() => {
-              const oldWeeks = (plan.plan_data?.weeks ?? []) as { week_number: number; theme?: string; total_km?: number; workouts?: { day_of_week: string; type: string; distance_km?: number | null; duration_minutes?: number | null }[] }[];
-              const newWeeks = ((assessPreview as { weeks?: unknown[] }).weeks ?? []) as typeof oldWeeks;
+              type DiffWorkout = { day_of_week: string; type: string; description?: string; distance_km?: number | null; duration_minutes?: number | null; is_optional?: boolean };
+              type DiffWeek = { week_number: number; theme?: string; total_km?: number; workouts?: DiffWorkout[] };
+              const oldWeeks = (plan.plan_data?.weeks ?? []) as DiffWeek[];
+              const newWeeks = ((assessPreview as { weeks?: unknown[] }).weeks ?? []) as DiffWeek[];
               return (
                 <>
                   <div className="px-6 py-4 border-t border-amber-200 bg-amber-50 space-y-2 max-h-[50vh] overflow-y-auto">
                     <h3 className="text-sm font-semibold text-amber-900">Proposed Changes</h3>
                     {newWeeks.map(nw => {
                       const ow = oldWeeks.find(w => w.week_number === nw.week_number);
-                      const oldKm = ow?.total_km ?? 0;
-                      const newKm = nw.total_km ?? 0;
+                      const sumKm = (workouts?: { distance_km?: number | null }[]) =>
+                        (workouts ?? []).reduce((s, w) => s + (w.distance_km ?? 0), 0);
+                      const oldKm = sumKm(ow?.workouts);
+                      const newKm = sumKm(nw.workouts);
                       const kmDiff = newKm - oldKm;
                       const isExpanded = diffExpanded.has(nw.week_number);
                       const toggleExpand = () => setDiffExpanded(prev => {
@@ -1051,37 +1059,88 @@ export default function PlanDetailPage() {
                               <span className="text-gray-300 ml-1">{isExpanded ? "▾" : "▸"}</span>
                             </span>
                           </button>
-                          {isExpanded && (
+                          {isExpanded && (() => {
+                            const fmtWorkout = (w: DiffWorkout) => {
+                              const parts = [w.type.replace(/_/g, " ")];
+                              if (w.distance_km != null) parts.push(`${w.distance_km}km`);
+                              if (w.duration_minutes != null) parts.push(`${w.duration_minutes}min`);
+                              if (w.is_optional) parts.push("optional");
+                              return parts.join(" ");
+                            };
+                            const isChanged = (o: DiffWorkout | undefined, n: DiffWorkout) =>
+                              !o || o.type !== n.type || o.distance_km !== n.distance_km
+                              || o.duration_minutes !== n.duration_minutes || o.is_optional !== n.is_optional
+                              || (o.description ?? "") !== (n.description ?? "");
+                            const removedWorkouts = (ow?.workouts ?? []).filter(owk => !(nw.workouts ?? []).some(n => n.day_of_week === owk.day_of_week));
+                            return (
                             <div className="px-3 pb-2 space-y-1 border-t border-amber-100">
+                              {removedWorkouts.map((owk, ri) => (
+                                <details key={`removed-${ri}`} className="text-xs text-red-700 group/d">
+                                  <summary className="flex items-center gap-2 py-0.5 cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+                                    <span className="text-gray-300 w-3 shrink-0 group-open/d:rotate-90 transition-transform text-[10px]">▸</span>
+                                    <span className="w-20 shrink-0">{owk.day_of_week}</span>
+                                    <span className="text-red-400">{fmtWorkout(owk)}</span>
+                                    <span className="text-gray-300">&rarr;</span>
+                                    <span className="font-medium">removed</span>
+                                  </summary>
+                                  {owk.description && (
+                                    <div className="pl-24 pb-1 text-[11px] text-red-400">{owk.description}</div>
+                                  )}
+                                </details>
+                              ))}
                               {(nw.workouts ?? []).map((nwk, wi) => {
-                                const owk = ow?.workouts?.[wi];
-                                const oldType = owk?.type ?? "—";
-                                const oldDist = owk?.distance_km;
-                                const changed = oldType !== nwk.type || oldDist !== nwk.distance_km;
+                                const owk = ow?.workouts?.find(w => w.day_of_week === nwk.day_of_week);
+                                const changed = isChanged(owk, nwk);
+                                const metricsChanged = !owk || owk.type !== nwk.type || owk.distance_km !== nwk.distance_km || owk.duration_minutes !== nwk.duration_minutes || owk.is_optional !== nwk.is_optional;
+                                const descChanged = (owk?.description ?? "") !== (nwk.description ?? "");
+                                const hasDesc = nwk.description || owk?.description;
                                 return (
-                                  <div key={wi} className={`flex items-center gap-2 text-xs py-0.5 ${changed ? "text-amber-800" : "text-gray-400"}`}>
-                                    <span className="w-20 shrink-0">{nwk.day_of_week}</span>
-                                    {changed ? (
-                                      <>
-                                        <span className="text-gray-400 line-through">{oldType.replace(/_/g, " ")} {oldDist != null ? `${oldDist}km` : ""}</span>
-                                        <span className="text-gray-300">&rarr;</span>
-                                        <span className="font-medium">{nwk.type.replace(/_/g, " ")} {nwk.distance_km != null ? `${nwk.distance_km}km` : ""}</span>
-                                      </>
-                                    ) : (
-                                      <span>{nwk.type.replace(/_/g, " ")} {nwk.distance_km != null ? `${nwk.distance_km}km` : ""}</span>
+                                  <details key={wi} className={`text-xs group/d ${changed ? "text-amber-800" : "text-gray-400"}`}>
+                                    <summary className="flex items-center gap-2 py-0.5 cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+                                      <span className="text-gray-300 w-3 shrink-0 group-open/d:rotate-90 transition-transform text-[10px]">▸</span>
+                                      <span className="w-20 shrink-0">{nwk.day_of_week}</span>
+                                      {!owk ? (
+                                        <>
+                                          <span className="text-green-600 font-medium">added: </span>
+                                          <span className="font-medium">{fmtWorkout(nwk)}</span>
+                                        </>
+                                      ) : metricsChanged ? (
+                                        <>
+                                          <span className="text-gray-400">{fmtWorkout(owk)}</span>
+                                          <span className="text-gray-300">&rarr;</span>
+                                          <span className="font-medium">{fmtWorkout(nwk)}</span>
+                                        </>
+                                      ) : descChanged ? (
+                                        <>
+                                          <span>{fmtWorkout(nwk)}</span>
+                                          <span className="text-amber-500 text-[10px]">(details changed)</span>
+                                        </>
+                                      ) : (
+                                        <span>{fmtWorkout(nwk)}</span>
+                                      )}
+                                    </summary>
+                                    {hasDesc && (
+                                      <div className="pl-24 pb-1.5 space-y-0.5">
+                                        {owk?.description && changed && (
+                                          <p className="text-[11px] text-gray-400">{owk.description}</p>
+                                        )}
+                                        {nwk.description && (
+                                          <p className={`text-[11px] ${changed ? "text-amber-700" : "text-gray-400"}`}>{nwk.description}</p>
+                                        )}
+                                      </div>
                                     )}
-                                  </div>
+                                  </details>
                                 );
                               })}
-                            </div>
-                          )}
+                            </div>);
+                          })()}
                         </div>
                       );
                     })}
                   </div>
                   <div className="px-6 py-3 border-t border-green-200 bg-green-50 flex items-center gap-3">
                     <button
-                      onClick={handleAssessApply}
+                      onClick={() => { if (window.confirm("Are you sure you want to save these changes?")) handleAssessApply(); }}
                       disabled={assessSaving}
                       className="bg-green-600 hover:bg-green-700 disabled:bg-green-300 text-white font-medium px-5 py-2 rounded-xl text-sm transition-colors"
                     >
@@ -1095,7 +1154,7 @@ export default function PlanDetailPage() {
                       Continue Adjusting
                     </button>
                     <button
-                      onClick={handleAssessDismiss}
+                      onClick={() => { if (window.confirm("Are you sure you want to dismiss the revised plan?")) handleAssessDismiss(); }}
                       disabled={assessSaving}
                       className="text-gray-500 hover:text-gray-700 text-sm transition-colors"
                     >
@@ -1230,6 +1289,14 @@ export default function PlanDetailPage() {
                             <span className="font-medium text-gray-700">{Math.round(w.activity.average_hr)} bpm</span>
                           </span>
                         )}
+                        {(w.activity.elevation_gain != null || w.activity.elevation_loss != null) && (
+                          <span>
+                            <span className="text-gray-400">elev </span>
+                            {w.activity.elevation_gain != null && <span className="font-medium text-green-600">+{Math.round(w.activity.elevation_gain)}m</span>}
+                            {w.activity.elevation_gain != null && w.activity.elevation_loss != null && <span className="text-gray-300"> / </span>}
+                            {w.activity.elevation_loss != null && <span className="font-medium text-red-500">-{Math.round(w.activity.elevation_loss)}m</span>}
+                          </span>
+                        )}
                         {w.activity.hr_zones && (
                           <span title={`Z1:${w.activity.hr_zones[0]}% Z2:${w.activity.hr_zones[1]}% Z3:${w.activity.hr_zones[2]}% Z4:${w.activity.hr_zones[3]}% Z5:${w.activity.hr_zones[4]}%`}>
                             <span className="text-gray-400">HR zones </span>
@@ -1241,6 +1308,42 @@ export default function PlanDetailPage() {
                           </span>
                         )}
                       </div>
+                    )}
+                    {w.activity?.laps && w.activity.laps.length > 1 && (
+                      <details className="mt-1.5">
+                        <summary className="text-[11px] text-gray-400 cursor-pointer hover:text-gray-600">
+                          {w.activity.laps.length} laps
+                        </summary>
+                        <div className="mt-1 space-y-0.5">
+                          {w.activity.laps.map((lap) => {
+                            const distKm = (lap.distance / 1000).toFixed(2);
+                            const paceVal = lap.average_speed && lap.average_speed > 0 ? 1000 / (lap.average_speed * 60) : null;
+                            const paceStr = paceVal ? `${Math.floor(paceVal)}:${String(Math.round((paceVal % 1) * 60)).padStart(2, "0")}` : "—";
+                            const timeStr = `${Math.floor(lap.moving_time / 60)}:${String(lap.moving_time % 60).padStart(2, "0")}`;
+                            return (
+                              <div key={lap.lap_index} className="flex gap-3 text-[11px] text-gray-500 font-mono">
+                                <span className="text-gray-300 w-4 text-right">{lap.lap_index}</span>
+                                <span className="w-14">{distKm} km</span>
+                                <span className="w-14">{paceStr}/km</span>
+                                <span className="w-12">{timeStr}</span>
+                                {lap.average_heartrate && <span className="w-12">{Math.round(lap.average_heartrate)} bpm</span>}
+                                {(lap.elevation_gain != null || lap.elevation_loss != null) && (
+                                  <span className="w-20">
+                                    {lap.elevation_gain != null && <span className="text-green-600">+{Math.round(lap.elevation_gain)}</span>}
+                                    {lap.elevation_loss != null && <span className="text-red-500">/{-Math.round(lap.elevation_loss)}</span>}
+                                    <span className="text-gray-400">m</span>
+                                  </span>
+                                )}
+                                {lap.hr_zones && (
+                                  <span className="text-[10px] text-gray-400">
+                                    {["Z1","Z2","Z3","Z4","Z5"].map((z, i) => lap.hr_zones![i] > 0 ? `${z}:${lap.hr_zones![i]}%` : null).filter(Boolean).join(" ")}
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </details>
                     )}
                     {w.activity?.match_score != null && (
                       <div className="mt-2 flex items-start gap-2">

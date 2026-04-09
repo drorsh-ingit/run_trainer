@@ -130,7 +130,7 @@ class AssessStartRequest(BaseModel):
     ai_model: Optional[str] = Field(None, description="Override model; defaults to plan's stored model")
 
 class AssessReplyRequest(BaseModel):
-    message: str = Field(..., min_length=1)
+    message: str = ""
     history: List[ChatMessage] = []
     ai_model: Optional[str] = Field(None, description="Override model; defaults to plan's stored model")
 
@@ -221,7 +221,10 @@ class ActivityOut(BaseModel):
     average_hr: Optional[float] = None
     average_pace_min_per_km: Optional[float] = None
     hr_zones: Optional[List[int]] = None
+    elevation_gain: Optional[float] = None
+    elevation_loss: Optional[float] = None
     has_streams: bool = False
+    laps: Optional[List[dict]] = None
     match_score: Optional[int] = None
     match_comment: Optional[str] = None
 
@@ -249,7 +252,10 @@ class ActivityOut(BaseModel):
             average_hr=getattr(obj, "average_hr", None),
             average_pace_min_per_km=pace,
             hr_zones=hr_zones,
+            elevation_gain=streams.get("elevation_gain") if streams else getattr(obj, "total_elevation_gain", None),
+            elevation_loss=streams.get("elevation_loss") if streams else None,
             has_streams=bool(streams),
+            laps=streams.get("laps") if streams else None,
             match_score=getattr(obj, "match_score", None),
             match_comment=getattr(obj, "match_comment", None),
         )

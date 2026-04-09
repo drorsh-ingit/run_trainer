@@ -867,11 +867,8 @@ def generate_steps_for_workouts(workouts: list[dict]) -> dict[int, list[dict]]:
 
 _MATCH_SYSTEM = """You are a running coach analyzing how well an athlete executed a planned workout.
 
-Given the planned workout and actual activity data, return JSON with exactly two fields:
-{
-  "score": <integer 0-100, representing % match quality>,
-  "comment": "<1-2 sentences of coaching feedback>"
-}
+IMPORTANT: respond with ONLY a JSON object. No prose, no analysis, no markdown. Just the JSON:
+{"score": <integer 0-100>, "comment": "<1-3 sentences of coaching feedback>"}
 
 Scoring guidelines:
 - Consider distance completion, pace appropriateness for the workout type, HR zone alignment, and duration
@@ -890,6 +887,15 @@ Score bands:
 - 40-59: significant deviation from plan
 - <40: major issues
 
+When "Planned steps" and "Strava laps" are provided, perform LAP-BY-LAP analysis:
+- Align each Strava lap to its corresponding planned step (by order, matching warmup/active/rest/cooldown progression)
+- For interval workouts: compare each active lap's pace against that step's target pace range
+- For rest/recovery laps: verify the runner slowed down (don't penalize exact pace)
+- Warmup/cooldown laps: check they were in an appropriate easy zone
+- A runner who hits all interval targets but has a slow overall average should score HIGH
+- If laps are present but planned steps are not, use the laps to assess effort distribution and consistency
+- If only 1 lap exists (auto-lap or no manual laps), fall back to overall stats analysis
+
 Comment tone: concise, supportive, specific to the data. Mention actual numbers."""
 
 
@@ -903,6 +909,10 @@ def generate_match_analysis(
     actual_pace_min_per_km: float | None,
     average_hr: float | None,
     hr_zones: list[int] | None,
+    elevation_gain: float | None = None,
+    elevation_loss: float | None = None,
+    laps: list[dict] | None = None,
+    planned_steps: list[dict] | None = None,
 ) -> tuple[int, str]:
     """Use Claude to score an activity against its planned workout."""
     client = _get_client()
@@ -931,11 +941,58 @@ Actual activity:
 - Duration: {actual_duration_min or "unknown"} min
 - Pace: {fmt_pace(actual_pace_min_per_km)}
 - Avg HR: {round(average_hr) if average_hr else "unknown"} bpm
-- HR zones: {fmt_zones(hr_zones)}"""
+- HR zones: {fmt_zones(hr_zones)}
+- Elevation: {f"+{elevation_gain}m / -{elevation_loss}m" if elevation_gain is not None else "unknown"}"""
+
+    if planned_steps:
+        steps_lines = []
+        for i, s in enumerate(planned_steps):
+            dur = s.get("duration_value", "?")
+            dur_type = s.get("duration_type", "?")
+            dur_display = f"{dur}s" if dur_type == "TIME" else f"{dur}m"
+            tgt = s.get("target_type", "OPEN")
+            tgt_detail = ""
+            if tgt == "PACE" and s.get("target_low"):
+                lo = s["target_low"]
+                hi = s.get("target_high") or lo
+                tgt_detail = f" target {lo // 60}:{lo % 60:02d}-{hi // 60}:{hi % 60:02d} min/km"
+            elif tgt == "HEART_RATE_ZONE" and s.get("target_low"):
+                tgt_detail = f" target HR zone {s['target_low']}-{s.get('target_high', s['target_low'])}"
+            steps_lines.append(
+                f"  {i+1}. {s.get('step_type', '?')} | {dur_display} | {tgt}{tgt_detail}"
+            )
+        prompt += "\n\nPlanned steps:\n" + "\n".join(steps_lines)
+
+    if laps and len(laps) > 1:
+        lap_lines = []
+        for lap in laps:
+            spd = lap.get("average_speed")
+            pace_str = f"{int(1000/spd/60)}:{int(1000/spd%60):02d}" if spd and spd > 0 else "?"
+            dist_km = round(lap.get("distance", 0) / 1000, 2)
+            hr = round(lap["average_heartrate"]) if lap.get("average_heartrate") else "?"
+            elev_str = ""
+            eg = lap.get("elevation_gain")
+            el = lap.get("elevation_loss")
+            if eg is not None or el is not None:
+                parts = []
+                if eg is not None: parts.append(f"+{eg}m")
+                if el is not None: parts.append(f"-{el}m")
+                elev_str = f", elev {'/'.join(parts)}"
+            zones_str = ""
+            if lap.get("hr_zones"):
+                z = lap["hr_zones"]
+                zone_labels = ["Z1", "Z2", "Z3", "Z4", "Z5"]
+                zones_str = ", zones " + "/".join(f"{l}:{v}%" for l, v in zip(zone_labels, z))
+            lap_lines.append(
+                f"  Lap {lap.get('lap_index', '?')}: {dist_km}km, "
+                f"pace {pace_str}/km, HR {hr}bpm, "
+                f"time {lap.get('moving_time', '?')}s{elev_str}{zones_str}"
+            )
+        prompt += "\n\nStrava laps:\n" + "\n".join(lap_lines)
 
     response = client.messages.create(
         model="claude-sonnet-4-6",
-        max_tokens=200,
+        max_tokens=500,
         system=_MATCH_SYSTEM,
         messages=[{"role": "user", "content": prompt}],
     )

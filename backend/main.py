@@ -16,6 +16,7 @@ _migrations = [
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS max_hr INTEGER",
     "ALTER TABLE workout_activities ADD COLUMN IF NOT EXISTS match_score INTEGER",
     "ALTER TABLE workout_activities ADD COLUMN IF NOT EXISTS match_comment TEXT",
+    "ALTER TABLE workout_activities ADD COLUMN total_elevation_gain FLOAT",
 ]
 for stmt in _migrations:
     try:
@@ -29,7 +30,7 @@ app = FastAPI(title="Run Trainer API", version="0.1.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.frontend_url, "http://localhost:3000", "http://localhost:3001"],
+    allow_origins=[settings.frontend_url, "http://localhost:3000", "http://localhost:3001", "http://127.0.0.1:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

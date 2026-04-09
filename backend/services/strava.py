@@ -95,7 +95,7 @@ def fetch_streams(access_token: str, activity_id: str) -> dict:
     resp = httpx.get(
         f"{STRAVA_API}/activities/{activity_id}/streams",
         headers={"Authorization": f"Bearer {access_token}"},
-        params={"keys": "heartrate,velocity_smooth,time,distance", "key_by_type": "true"},
+        params={"keys": "heartrate,velocity_smooth,time,distance,altitude", "key_by_type": "true"},
         timeout=30,
     )
     if resp.status_code == 404:
@@ -103,6 +103,35 @@ def fetch_streams(access_token: str, activity_id: str) -> dict:
     resp.raise_for_status()
     data = resp.json()
     return {k: v["data"] for k, v in data.items() if isinstance(v, dict) and "data" in v}
+
+
+def fetch_laps(access_token: str, activity_id: str) -> list[dict]:
+    """Fetch lap/interval data for an activity."""
+    resp = httpx.get(
+        f"{STRAVA_API}/activities/{activity_id}/laps",
+        headers={"Authorization": f"Bearer {access_token}"},
+        timeout=30,
+    )
+    if resp.status_code == 404:
+        return []
+    resp.raise_for_status()
+    return [
+        {
+            "lap_index": lap.get("lap_index"),
+            "name": lap.get("name"),
+            "distance": lap.get("distance"),
+            "elapsed_time": lap.get("elapsed_time"),
+            "moving_time": lap.get("moving_time"),
+            "average_speed": lap.get("average_speed"),
+            "max_speed": lap.get("max_speed"),
+            "average_heartrate": lap.get("average_heartrate"),
+            "max_heartrate": lap.get("max_heartrate"),
+            "total_elevation_gain": lap.get("total_elevation_gain"),
+            "start_index": lap.get("start_index"),
+            "end_index": lap.get("end_index"),
+        }
+        for lap in resp.json()
+    ]
 
 
 def fetch_athlete_max_hr(access_token: str) -> int | None:
@@ -132,6 +161,21 @@ def compute_hr_zones(hr_stream: list[int], max_hr: int = 185) -> list[int]:
     if total == 0:
         return [0, 0, 0, 0, 0]
     return [round(z * 100 / total) for z in zones]
+
+
+def _compute_elevation(altitude: list[float], start: int = 0, end: int | None = None) -> tuple[float, float]:
+    """Return (elevation_gain, elevation_loss) in meters for a slice of the altitude stream."""
+    if not altitude:
+        return 0.0, 0.0
+    end = end if end is not None else len(altitude) - 1
+    gain, loss = 0.0, 0.0
+    for i in range(start + 1, min(end + 1, len(altitude))):
+        diff = altitude[i] - altitude[i - 1]
+        if diff > 0:
+            gain += diff
+        else:
+            loss += abs(diff)
+    return round(gain, 1), round(loss, 1)
 
 
 # ── Match scoring ────────────────────────────────────────────────────────────
@@ -250,9 +294,10 @@ def sync_plan_activities(plan_id: int, user_id: int, db: Session) -> dict:
                 if w:
                     w.completed = False
             db.delete(row)
+    db.flush()
 
     # Match activities to workouts by date, then best distance fit
-    # First, collect workout_ids already claimed by existing (kept) rows
+    # Only count workout_ids from rows that survived cleanup (not deleted stale/Garmin rows)
     kept_rows = {sid: r for sid, r in existing_by_strava_id.items() if sid in fetched_ids}
     matched_workout_ids: set[int] = {r.workout_id for r in kept_rows.values() if r.workout_id}
     act_to_workout: dict[str, PlannedWorkout] = {}
@@ -291,8 +336,28 @@ def sync_plan_activities(plan_id: int, user_id: int, db: Session) -> dict:
                 streams = fetch_streams(access_token, act_id)
                 if "heartrate" in streams and max_hr:
                     streams["hr_zones"] = compute_hr_zones(streams["heartrate"], max_hr)
+                # Compute elevation gain/loss from altitude stream
+                if "altitude" in streams:
+                    gain, loss = _compute_elevation(streams["altitude"])
+                    streams["elevation_gain"] = gain
+                    streams["elevation_loss"] = loss
+                laps = fetch_laps(access_token, act_id)
+                if laps:
+                    for lap in laps:
+                        si, ei = lap.get("start_index", 0), lap.get("end_index")
+                        if "altitude" in streams:
+                            lg, ll = _compute_elevation(streams["altitude"], si, ei)
+                            lap["elevation_gain"] = lg
+                            lap["elevation_loss"] = ll
+                        if "heartrate" in streams and max_hr:
+                            end = ei if ei is not None else len(streams["heartrate"]) - 1
+                            hr_slice = streams["heartrate"][si:end + 1]
+                            if hr_slice:
+                                lap["hr_zones"] = compute_hr_zones(hr_slice, max_hr)
+                if laps:
+                    streams["laps"] = laps
             except Exception as e:
-                errors.append(f"Streams fetch failed for activity {act_id}: {e}")
+                errors.append(f"Streams/laps fetch failed for activity {act_id}: {e}")
 
         row = WorkoutActivity(plan_id=plan_id, workout_id=workout.id if workout else None)
         db.add(row)
@@ -304,6 +369,7 @@ def sync_plan_activities(plan_id: int, user_id: int, db: Session) -> dict:
         row.average_hr = act.get("average_heartrate")
         row.average_speed_ms = avg_speed
         row.start_date = datetime.fromisoformat(act["start_date_local"])
+        row.total_elevation_gain = act.get("total_elevation_gain")
         row.streams_data = streams or None
 
         if workout:
@@ -320,6 +386,10 @@ def sync_plan_activities(plan_id: int, user_id: int, db: Session) -> dict:
                     actual_pace_min_per_km=actual_pace,
                     average_hr=act.get("average_heartrate"),
                     hr_zones=hr_zones,
+                    elevation_gain=streams.get("elevation_gain"),
+                    elevation_loss=streams.get("elevation_loss"),
+                    laps=streams.get("laps"),
+                    planned_steps=workout.steps,
                 )
             except Exception:
                 score, comment = _score_match(workout, actual_km, actual_pace)
@@ -391,6 +461,10 @@ def rescore_plan_activities(plan_id: int, user_id: int, db: Session) -> int:
                 actual_pace_min_per_km=actual_pace,
                 average_hr=wa.average_hr,
                 hr_zones=hr_zones,
+                elevation_gain=wa.streams_data.get("elevation_gain") if wa.streams_data else None,
+                elevation_loss=wa.streams_data.get("elevation_loss") if wa.streams_data else None,
+                laps=wa.streams_data.get("laps") if wa.streams_data else None,
+                planned_steps=workout.steps,
             )
         except Exception:
             score, comment = _score_match(workout, wa.actual_distance_km or 0, actual_pace)

@@ -87,6 +87,7 @@ class WorkoutActivity(Base):
     average_hr         = Column(Float, nullable=True)
     average_speed_ms   = Column(Float, nullable=True)
     start_date         = Column(DateTime, nullable=True)
+    total_elevation_gain = Column(Float, nullable=True)
     streams_data       = Column(JSON, nullable=True)
     match_score        = Column(Integer, nullable=True)   # 0–100
     match_comment      = Column(Text, nullable=True)
