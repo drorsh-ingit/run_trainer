@@ -141,8 +141,6 @@ export default function PlanDetailPage() {
   const [activitySyncing, setActivitySyncing] = useState(false);
   const [activitySyncResult, setActivitySyncResult] = useState("");
   const [rescoring, setRescoring] = useState(false);
-  const [recalcingLabels, setRecalcingLabels] = useState(false);
-
   // Chat state
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
@@ -391,24 +389,6 @@ export default function PlanDetailPage() {
       setActivitySyncResult("Rescore failed: network error");
     } finally {
       setRescoring(false);
-    }
-  };
-
-  const handleRecalcLabels = async () => {
-    setShowPullMenu(false);
-    setRecalcingLabels(true);
-    setActivitySyncResult("Recalculating distance labels…");
-    try {
-      const res = await apiFetch(`/plans/${id}/recalc-labels`, { method: "POST" });
-      const data = await res.json();
-      if (!res.ok) { setActivitySyncResult(data.detail ?? "Recalc failed"); return; }
-      setActivitySyncResult(`Updated ${data.updated} of ${data.total} workout labels`);
-      const planRes = await apiFetch(`/plans/${id}`);
-      if (planRes.ok) setPlan(await planRes.json());
-    } catch {
-      setActivitySyncResult("Recalc failed: network error");
-    } finally {
-      setRecalcingLabels(false);
     }
   };
 
@@ -852,13 +832,6 @@ export default function PlanDetailPage() {
                         className="w-full text-left px-4 py-2 hover:bg-gray-50 text-gray-800 disabled:text-gray-300"
                       >
                         {rescoring ? "Recalculating…" : "Recalculate scores"}
-                      </button>
-                      <button
-                        onClick={handleRecalcLabels}
-                        disabled={recalcingLabels}
-                        className="w-full text-left px-4 py-2 hover:bg-gray-50 text-gray-800 disabled:text-gray-300"
-                      >
-                        {recalcingLabels ? "Recalculating…" : "Recalculate distances"}
                       </button>
                     </div>
                     {/* Disconnect options */}

@@ -10,7 +10,7 @@ from schemas import PlanCreateRequest, PlanOut, PlanReviseRequest, SavePreviewRe
 from schemas import ClaudePlanResponse, PlanChatRequest, CoachChatRequest
 from schemas import AssessStartRequest, AssessReplyRequest, AssessApplyRequest
 from services.claude import generate_plan, chat_plan_revision, start_coaching_session, continue_coaching_chat, build_coached_plan, generate_steps_for_workouts
-from services.claude import assess_plan_chat, assess_build_plan, _build_comparison_context, generate_distance_labels
+from services.claude import assess_plan_chat, assess_build_plan, _build_comparison_context
 from services.auth import get_current_user
 
 router = APIRouter(prefix="/plans", tags=["plans"])
@@ -662,33 +662,3 @@ def assess_apply(
     db.commit()
     db.refresh(plan)
     return plan
-
-
-@router.post("/{plan_id}/recalc-labels")
-def recalc_distance_labels(
-    plan_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    plan = db.query(TrainingPlan).filter(TrainingPlan.id == plan_id).first()
-    if not plan:
-        raise HTTPException(404)
-    if not _is_authorized(plan, current_user):
-        raise HTTPException(403)
-
-    workouts = db.query(PlannedWorkout).filter(PlannedWorkout.plan_id == plan_id).all()
-    items = [
-        {"id": w.id, "type": w.workout_type, "description": w.description, "distance_km": w.target_distance_km}
-        for w in workouts
-        if w.description and w.target_distance_km is not None
-    ]
-
-    labels = generate_distance_labels(items)
-    updated = 0
-    for w in workouts:
-        if w.id in labels:
-            w.distance_label = labels[w.id]
-            updated += 1
-
-    db.commit()
-    return {"updated": updated, "total": len(workouts)}
