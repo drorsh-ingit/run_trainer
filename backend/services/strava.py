@@ -390,6 +390,7 @@ def sync_plan_activities(plan_id: int, user_id: int, db: Session) -> dict:
                     elevation_loss=streams.get("elevation_loss"),
                     laps=streams.get("laps"),
                     planned_steps=workout.steps,
+                    distance_label=workout.distance_label,
                 )
             except Exception:
                 score, comment = _score_match(workout, actual_km, actual_pace)
@@ -465,6 +466,7 @@ def rescore_plan_activities(plan_id: int, user_id: int, db: Session) -> int:
                 elevation_loss=wa.streams_data.get("elevation_loss") if wa.streams_data else None,
                 laps=wa.streams_data.get("laps") if wa.streams_data else None,
                 planned_steps=workout.steps,
+                distance_label=workout.distance_label,
             )
         except Exception:
             score, comment = _score_match(workout, wa.actual_distance_km or 0, actual_pace)

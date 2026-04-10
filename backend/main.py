@@ -17,6 +17,7 @@ _migrations = [
     "ALTER TABLE workout_activities ADD COLUMN IF NOT EXISTS match_score INTEGER",
     "ALTER TABLE workout_activities ADD COLUMN IF NOT EXISTS match_comment TEXT",
     "ALTER TABLE workout_activities ADD COLUMN total_elevation_gain FLOAT",
+    "ALTER TABLE planned_workouts ADD COLUMN distance_label TEXT",
 ]
 for stmt in _migrations:
     try:

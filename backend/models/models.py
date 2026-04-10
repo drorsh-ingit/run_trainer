@@ -50,6 +50,7 @@ class PlannedWorkout(Base):
     workout_type = Column(String)           # easy, tempo, long run, intervals, rest
     description = Column(Text)
     target_distance_km = Column(Float)
+    distance_label = Column(String, nullable=True)
     target_duration_minutes = Column(Integer)
     is_optional = Column(Boolean, default=False)
     completed = Column(Boolean, default=False)

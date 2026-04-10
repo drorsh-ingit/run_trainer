@@ -32,6 +32,7 @@ type Workout = {
   workout_type: string;
   description: string;
   target_distance_km: number | null;
+  distance_label: string | null;
   target_duration_minutes: number | null;
   is_optional: boolean;
   completed: boolean;
@@ -140,6 +141,7 @@ export default function PlanDetailPage() {
   const [activitySyncing, setActivitySyncing] = useState(false);
   const [activitySyncResult, setActivitySyncResult] = useState("");
   const [rescoring, setRescoring] = useState(false);
+  const [recalcingLabels, setRecalcingLabels] = useState(false);
 
   // Chat state
   const [messages, setMessages] = useState<ChatMsg[]>([]);
@@ -389,6 +391,24 @@ export default function PlanDetailPage() {
       setActivitySyncResult("Rescore failed: network error");
     } finally {
       setRescoring(false);
+    }
+  };
+
+  const handleRecalcLabels = async () => {
+    setShowPullMenu(false);
+    setRecalcingLabels(true);
+    setActivitySyncResult("Recalculating distance labels…");
+    try {
+      const res = await apiFetch(`/plans/${id}/recalc-labels`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) { setActivitySyncResult(data.detail ?? "Recalc failed"); return; }
+      setActivitySyncResult(`Updated ${data.updated} of ${data.total} workout labels`);
+      const planRes = await apiFetch(`/plans/${id}`);
+      if (planRes.ok) setPlan(await planRes.json());
+    } catch {
+      setActivitySyncResult("Recalc failed: network error");
+    } finally {
+      setRecalcingLabels(false);
     }
   };
 
@@ -824,7 +844,7 @@ export default function PlanDetailPage() {
                         Connect Strava…
                       </button>
                     )}
-                    {/* Recalculate scores */}
+                    {/* Recalculate scores & labels */}
                     <div className="border-t border-gray-100 mt-1 pt-1">
                       <button
                         onClick={handleRescore}
@@ -832,6 +852,13 @@ export default function PlanDetailPage() {
                         className="w-full text-left px-4 py-2 hover:bg-gray-50 text-gray-800 disabled:text-gray-300"
                       >
                         {rescoring ? "Recalculating…" : "Recalculate scores"}
+                      </button>
+                      <button
+                        onClick={handleRecalcLabels}
+                        disabled={recalcingLabels}
+                        className="w-full text-left px-4 py-2 hover:bg-gray-50 text-gray-800 disabled:text-gray-300"
+                      >
+                        {recalcingLabels ? "Recalculating…" : "Recalculate distances"}
                       </button>
                     </div>
                     {/* Disconnect options */}
@@ -1017,7 +1044,7 @@ export default function PlanDetailPage() {
 
             {/* Diff + actions when preview is ready */}
             {assessPreview && plan && (() => {
-              type DiffWorkout = { day_of_week: string; type: string; description?: string; distance_km?: number | null; duration_minutes?: number | null; is_optional?: boolean };
+              type DiffWorkout = { day_of_week: string; type: string; description?: string; distance_km?: number | null; distance_label?: string | null; duration_minutes?: number | null; is_optional?: boolean };
               type DiffWeek = { week_number: number; theme?: string; total_km?: number; workouts?: DiffWorkout[] };
               const oldWeeks = (plan.plan_data?.weeks ?? []) as DiffWeek[];
               const newWeeks = ((assessPreview as { weeks?: unknown[] }).weeks ?? []) as DiffWeek[];
@@ -1062,7 +1089,8 @@ export default function PlanDetailPage() {
                           {isExpanded && (() => {
                             const fmtWorkout = (w: DiffWorkout) => {
                               const parts = [w.type.replace(/_/g, " ")];
-                              if (w.distance_km != null) parts.push(`${w.distance_km}km`);
+                              if (w.distance_label) { parts.push(w.distance_label); }
+                              else if (w.distance_km != null) { parts.push(`${w.distance_km}km`); }
                               if (w.duration_minutes != null) parts.push(`${w.duration_minutes}min`);
                               if (w.is_optional) parts.push("optional");
                               return parts.join(" ");
@@ -1251,7 +1279,7 @@ export default function PlanDetailPage() {
                           {w.workout_type.replace(/_/g, " ")}
                         </span>
                       )}
-                      {w.target_distance_km != null && <span className="text-xs text-gray-400">{w.target_distance_km} km</span>}
+                      {(w.distance_label || w.target_distance_km != null) && <span className="text-xs text-gray-400">{w.distance_label ?? `${w.target_distance_km} km`}</span>}
                       {w.target_duration_minutes != null && <span className="text-xs text-gray-400">{w.target_duration_minutes} min</span>}
                       {w.is_optional && <span className="text-xs text-gray-400 italic">optional</span>}
                     </div>
@@ -1262,8 +1290,8 @@ export default function PlanDetailPage() {
                           <span>
                             <span className="text-gray-400">dist </span>
                             <span className="font-medium text-gray-700">{w.activity.actual_distance_km} km</span>
-                            {w.target_distance_km != null && (
-                              <span className="text-gray-400"> / {w.target_distance_km} km planned</span>
+                            {(w.distance_label || w.target_distance_km != null) && (
+                              <span className="text-gray-400"> / {w.distance_label ?? `${w.target_distance_km} km`} planned</span>
                             )}
                           </span>
                         )}

@@ -37,6 +37,7 @@ type Workout = {
   workout_type: string;
   description: string;
   target_distance_km: number | null;
+  distance_label: string | null;
   target_duration_minutes: number | null;
   is_optional: boolean;
   completed: boolean;
@@ -188,8 +189,8 @@ function WorkoutTooltip({ workout, cellRef, onIgnore, ignoring, onMouseEnter, on
       </div>
 
       <div className="flex gap-3 mb-2 opacity-80">
-        {workout.target_distance_km != null && (
-          <span>{workout.target_distance_km} km planned</span>
+        {(workout.distance_label || workout.target_distance_km != null) && (
+          <span>{workout.distance_label ?? `${workout.target_distance_km} km`} planned</span>
         )}
         {workout.target_duration_minutes != null && (
           <span>{workout.target_duration_minutes} min planned</span>
@@ -255,8 +256,8 @@ function WorkoutCell({ workout, isCurrentMonth, onIgnore, ignoring }: { workout:
         <div className={`rounded-lg px-2 py-1.5 border-2 border-yellow-400 bg-gradient-to-br from-yellow-50 to-amber-100 text-yellow-900 cursor-default transition-shadow ${!isCurrentMonth ? "opacity-50" : ""} ${hovered ? "shadow-lg" : "shadow-sm"}`}>
           <div className="text-base leading-none mb-1">🏅</div>
           <div className="font-bold text-xs leading-tight">Race Day!</div>
-          {workout.target_distance_km != null && (
-            <div className="text-[10px] font-semibold mt-0.5 opacity-80">{workout.target_distance_km} km</div>
+          {(workout.distance_label || workout.target_distance_km != null) && (
+            <div className="text-[10px] font-semibold mt-0.5 opacity-80">{workout.distance_label ?? `${workout.target_distance_km} km`}</div>
           )}
         </div>
         {hovered && <WorkoutTooltip workout={workout} cellRef={cellRef} onMouseEnter={showTooltip} onMouseLeave={hideTooltip} />}
@@ -296,9 +297,9 @@ function WorkoutCell({ workout, isCurrentMonth, onIgnore, ignoring }: { workout:
             <span className="text-[10px] font-medium text-green-700">
               {workout.activity.actual_distance_km} km
             </span>
-          ) : workout.target_distance_km != null ? (
+          ) : (workout.distance_label || workout.target_distance_km != null) ? (
             <span className="text-[10px] opacity-75 font-medium">
-              {workout.target_distance_km} km
+              {workout.distance_label ?? `${workout.target_distance_km} km`}
             </span>
           ) : null}
           {!workout.completed && workout.target_duration_minutes != null && (

@@ -10,7 +10,7 @@ from schemas import PlanCreateRequest, PlanOut, PlanReviseRequest, SavePreviewRe
 from schemas import ClaudePlanResponse, PlanChatRequest, CoachChatRequest
 from schemas import AssessStartRequest, AssessReplyRequest, AssessApplyRequest
 from services.claude import generate_plan, chat_plan_revision, start_coaching_session, continue_coaching_chat, build_coached_plan, generate_steps_for_workouts
-from services.claude import assess_plan_chat, assess_build_plan, _build_comparison_context
+from services.claude import assess_plan_chat, assess_build_plan, _build_comparison_context, generate_distance_labels
 from services.auth import get_current_user
 
 router = APIRouter(prefix="/plans", tags=["plans"])
@@ -53,6 +53,7 @@ def _save_workouts(db: Session, plan: TrainingPlan, claude_plan, goal_date: date
                 workout_type=workout.type,
                 description=workout.description,
                 target_distance_km=workout.distance_km,
+                distance_label=workout.distance_label,
                 target_duration_minutes=workout.duration_minutes,
                 is_optional=workout.is_optional,
                 steps=[s.model_dump() for s in workout.steps],
@@ -652,6 +653,7 @@ def assess_apply(
                 workout_type=workout.type,
                 description=workout.description,
                 target_distance_km=workout.distance_km,
+                distance_label=workout.distance_label,
                 target_duration_minutes=workout.duration_minutes,
                 is_optional=workout.is_optional,
                 steps=[s.model_dump() for s in workout.steps],
@@ -660,3 +662,33 @@ def assess_apply(
     db.commit()
     db.refresh(plan)
     return plan
+
+
+@router.post("/{plan_id}/recalc-labels")
+def recalc_distance_labels(
+    plan_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    plan = db.query(TrainingPlan).filter(TrainingPlan.id == plan_id).first()
+    if not plan:
+        raise HTTPException(404)
+    if not _is_authorized(plan, current_user):
+        raise HTTPException(403)
+
+    workouts = db.query(PlannedWorkout).filter(PlannedWorkout.plan_id == plan_id).all()
+    items = [
+        {"id": w.id, "type": w.workout_type, "description": w.description, "distance_km": w.target_distance_km}
+        for w in workouts
+        if w.description and w.target_distance_km is not None
+    ]
+
+    labels = generate_distance_labels(items)
+    updated = 0
+    for w in workouts:
+        if w.id in labels:
+            w.distance_label = labels[w.id]
+            updated += 1
+
+    db.commit()
+    return {"updated": updated, "total": len(workouts)}

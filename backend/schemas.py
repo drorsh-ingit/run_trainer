@@ -187,6 +187,7 @@ class WorkoutSchema(BaseModel):
     type: str  # easy | tempo | long_run | intervals | fartlek | hill_repeats | strides | cross_training | rest | race
     description: str
     distance_km: Optional[float] = None
+    distance_label: Optional[str] = None
     duration_minutes: Optional[int] = None
     is_optional: bool = False
     steps: List[WorkoutStep] = []
@@ -271,6 +272,7 @@ class WorkoutOut(BaseModel):
     workout_type: str
     description: str
     target_distance_km: Optional[float]
+    distance_label: Optional[str] = None
     target_duration_minutes: Optional[int]
     is_optional: bool
     completed: bool

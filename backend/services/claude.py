@@ -112,6 +112,7 @@ You MUST respond with valid JSON only. No prose before or after. The JSON must m
           "type": "<easy|tempo|long_run|intervals|fartlek|hill_repeats|strides|cross_training|rest|race>",
           "description": "<specific actionable instructions, 1-3 sentences>",
           "distance_km": <float — MUST equal the sum of all segment distances in the description (e.g. 2km warmup + 4km tempo + 2km cooldown = 8km). null for rest/cross-training>,
+          "distance_label": "<human-readable distance, e.g. '7km + strides', '5x1km intervals + warmup/cooldown', '10km'. Only include when it differs from simply 'Xkm' — omit or set null if the label would just be the distance_km with 'km' appended>",
           "duration_minutes": <integer or null>,
           "is_optional": <true|false>
         }
@@ -179,6 +180,7 @@ You MUST respond with valid JSON only. No prose before or after. The JSON must m
           "type": "<easy|tempo|long_run|intervals|fartlek|hill_repeats|strides|cross_training|rest>",
           "description": "<specific actionable instructions, 1-3 sentences>",
           "distance_km": <float or null>,
+          "distance_label": "<human-readable distance, e.g. '7km + strides', '5x1km intervals + warmup/cooldown'. Omit or null if same as distance_km with 'km'>",
           "duration_minutes": <integer or null>,
           "is_optional": <true|false>
         }
@@ -298,6 +300,7 @@ The "plan" field must be a COMPLETE plan — never a diff or partial plan:
           "type": "<easy|tempo|long_run|intervals|fartlek|hill_repeats|strides|cross_training|rest|race>",
           "description": "<instructions with pace min/km, HR zone, RPE>",
           "distance_km": <float or null>,
+          "distance_label": "<human-readable distance, e.g. '7km + strides', '5x1km intervals + warmup/cooldown'. Omit or null if same as distance_km with 'km'>",
           "duration_minutes": <int or null>,
           "is_optional": <true|false>
         }
@@ -327,7 +330,7 @@ def chat_plan_revision(
         slim_weeks = []
         for week in plan.get("weeks", []):
             slim_workouts = [
-                {k: w[k] for k in ("day_of_week", "type", "distance_km", "duration_minutes", "is_optional") if k in w}
+                {k: w[k] for k in ("day_of_week", "type", "distance_km", "distance_label", "duration_minutes", "is_optional") if k in w}
                 for w in week.get("workouts", [])
             ]
             slim_weeks.append({
@@ -407,6 +410,7 @@ You MUST respond with valid JSON only. No prose before or after. The JSON must m
           "type": "<easy|tempo|long_run|intervals|fartlek|hill_repeats|strides|cross_training|rest|race>",
           "description": "<specific instructions including pace min/km, HR zone, RPE 1-10>",
           "distance_km": <float or null>,
+          "distance_label": "<human-readable distance, e.g. '7km + strides', '5x1km intervals + warmup/cooldown'. Omit or null if same as distance_km with 'km'>",
           "duration_minutes": <integer or null>,
           "is_optional": <true|false>
         }
@@ -617,6 +621,7 @@ You MUST respond with valid JSON only. No prose before or after. The JSON must m
           "type": "<easy|tempo|long_run|intervals|fartlek|hill_repeats|strides|cross_training|rest|race>",
           "description": "<instructions with pace min/km, HR zone, RPE>",
           "distance_km": <float or null>,
+          "distance_label": "<human-readable distance, e.g. '7km + strides', '5x1km intervals + warmup/cooldown'. Omit or null if same as distance_km with 'km'>",
           "duration_minutes": <int or null>,
           "is_optional": <true|false>
         }
@@ -913,6 +918,7 @@ def generate_match_analysis(
     elevation_loss: float | None = None,
     laps: list[dict] | None = None,
     planned_steps: list[dict] | None = None,
+    distance_label: str | None = None,
 ) -> tuple[int, str]:
     """Use Claude to score an activity against its planned workout."""
     client = _get_client()
@@ -933,7 +939,7 @@ def generate_match_analysis(
     prompt = f"""Planned workout:
 - Type: {workout_type}
 - Description: {description}
-- Target distance: {target_distance_km or "not specified"} km
+- Target distance: {distance_label or (f"{target_distance_km} km" if target_distance_km else "not specified")}
 - Target duration: {target_duration_min or "not specified"} min
 
 Actual activity:
@@ -1002,3 +1008,58 @@ Actual activity:
         return int(data["score"]), str(data["comment"])
     except Exception:
         return 75, f"Completed {actual_distance_km} km."
+
+
+def generate_distance_labels(workouts: list[dict]) -> dict[int, str]:
+    """Generate distance_label for workouts based on their descriptions.
+
+    Args:
+        workouts: list of dicts with keys: id, type, description, distance_km
+
+    Returns:
+        dict mapping workout id -> distance_label (only for workouts that need a label)
+    """
+    client = _get_client()
+
+    items = []
+    for w in workouts:
+        if not w.get("description") or w.get("distance_km") is None:
+            continue
+        items.append({"id": w["id"], "type": w["type"], "description": w["description"], "distance_km": w["distance_km"]})
+
+    if not items:
+        return {}
+
+    prompt = f"""For each workout below, generate a human-readable distance_label that describes
+the distance more accurately than just the total km number.
+
+Examples:
+- "7km easy run + 4x100m strides" with distance_km=7.4 → "7km + strides"
+- "2km warmup, 5x1km at tempo pace with 400m recovery, 1.5km cooldown" with distance_km=9.5 → "5x1km intervals + warmup/cooldown"
+- "10km easy run at conversational pace" with distance_km=10 → null (label would just be "10km", same as distance_km)
+- "8km long run with last 2km at marathon pace" with distance_km=8 → null (label would just be "8km")
+
+Rules:
+- Return null if the label would just be "Xkm" (same as distance_km with "km" appended)
+- Keep labels short and scannable
+- Focus on the structure (intervals, strides, warmup/cooldown) not the details
+
+IMPORTANT: respond with ONLY a JSON object, no other text.
+
+Workouts:
+{json.dumps(items)}
+
+Return format: {{"labels": {{"<workout_id>": "<label or null>", ...}}}}"""
+
+    response = client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=2000,
+        messages=[{"role": "user", "content": prompt}],
+    )
+
+    try:
+        data = json.loads(_extract_json(response.content[0].text))
+        labels = data.get("labels", {})
+        return {int(k): v for k, v in labels.items() if v is not None}
+    except Exception:
+        return {}
