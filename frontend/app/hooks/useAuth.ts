@@ -32,6 +32,8 @@ export async function apiFetch(path: string, init: RequestInit = {}): Promise<Re
   if (res.status === 401 && res.headers.get("WWW-Authenticate")?.includes("Bearer")) {
     clearToken();
     window.location.href = "/login";
+    // Return a never-resolving promise so callers don't process the 401
+    return new Promise<Response>(() => {});
   }
   return res;
 }
