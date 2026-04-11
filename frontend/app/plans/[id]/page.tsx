@@ -1377,17 +1377,26 @@ export default function PlanDetailPage() {
                       </button>
                     )}
                   </div>
-                  {!w.activity && w.workout_type !== "rest" && (
-                    <button
-                      onClick={() => handleToggleCompleted(w.id)}
-                      className="shrink-0 self-center ml-auto"
-                      title={w.completed ? "Mark as not done" : "Mark as done"}
-                    >
-                      <div className={`relative w-9 h-5 rounded-full transition-colors ${w.completed ? "bg-green-500" : "bg-gray-300"}`}>
-                        <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${w.completed ? "translate-x-4" : "translate-x-0.5"}`} />
+                  {w.workout_type !== "rest" && (
+                    w.activity ? (
+                      <div className="shrink-0 self-center ml-auto">
+                        <div className="relative w-9 h-5 rounded-full bg-green-500">
+                          <div className="absolute top-0.5 w-4 h-4 rounded-full bg-white shadow translate-x-4" />
+                        </div>
+                        <span className="text-[10px] text-gray-400 block text-center mt-0.5">done</span>
                       </div>
-                      <span className="text-[10px] text-gray-400 block text-center mt-0.5">{w.completed ? "done" : "not done"}</span>
-                    </button>
+                    ) : (
+                      <button
+                        onClick={() => handleToggleCompleted(w.id)}
+                        className="shrink-0 self-center ml-auto"
+                        title={w.completed ? "Mark as not done" : "Mark as done"}
+                      >
+                        <div className={`relative w-9 h-5 rounded-full transition-colors ${w.completed ? "bg-green-500" : "bg-gray-300"}`}>
+                          <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${w.completed ? "translate-x-4" : "translate-x-0.5"}`} />
+                        </div>
+                        <span className="text-[10px] text-gray-400 block text-center mt-0.5">{w.completed ? "done" : "not done"}</span>
+                      </button>
+                    )
                   )}
                 </div>
                 );
