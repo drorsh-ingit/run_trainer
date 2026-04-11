@@ -10,7 +10,7 @@ from schemas import PlanCreateRequest, PlanOut, PlanReviseRequest, SavePreviewRe
 from schemas import ClaudePlanResponse, PlanChatRequest, CoachChatRequest
 from schemas import AssessStartRequest, AssessReplyRequest, AssessApplyRequest
 from services.claude import generate_plan, chat_plan_revision, start_coaching_session, continue_coaching_chat, build_coached_plan, generate_steps_for_workouts
-from services.claude import assess_plan_chat, assess_build_plan, _build_comparison_context
+from services.claude import assess_plan_chat, assess_build_plan, _build_comparison_context, AIServiceError
 from services.auth import get_current_user
 
 router = APIRouter(prefix="/plans", tags=["plans"])
@@ -95,6 +95,8 @@ def create_plan(
 ):
     try:
         claude_plan = generate_plan(req, model=req.ai_model)
+    except AIServiceError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.message)
     except ValueError as e:
         raise HTTPException(status_code=502, detail=f"Plan generation failed: {e}")
     except RuntimeError as e:
@@ -142,6 +144,8 @@ def revise_preview(
     )
     try:
         revised = adjust_plan(body.current_plan, req, body.comment)
+    except AIServiceError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.message)
     except ValueError as e:
         raise HTTPException(status_code=502, detail=f"Plan revision failed: {e}")
     except RuntimeError as e:
@@ -165,6 +169,8 @@ def preview_chat(body: PreviewChatRequest, current_user: User = Depends(get_curr
     )
     try:
         result = chat_plan_revision(body.current_plan, req, body.history, body.message, model=body.ai_model)
+    except AIServiceError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.message)
     except ValueError as e:
         raise HTTPException(status_code=502, detail=f"Chat failed: {e}")
     except RuntimeError as e:
@@ -214,6 +220,8 @@ def coach_start(req: PlanCreateRequest, current_user: User = Depends(get_current
     """Start a coaching session — returns Claude's opening questions."""
     try:
         return start_coaching_session(req, model=req.ai_model)
+    except AIServiceError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.message)
     except Exception as e:
         raise HTTPException(status_code=502, detail=str(e))
 
@@ -223,6 +231,8 @@ def coach_reply(body: CoachChatRequest, current_user: User = Depends(get_current
     """Continue coaching Q&A. Returns question or ready signal."""
     try:
         return continue_coaching_chat(body.history, body.message, model=body.ai_model)
+    except AIServiceError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.message)
     except Exception as e:
         raise HTTPException(status_code=502, detail=str(e))
 
@@ -233,6 +243,8 @@ def coach_build(body: CoachChatRequest, current_user: User = Depends(get_current
     try:
         plan = build_coached_plan(body, body.history, model=body.ai_model)
         return plan.model_dump()
+    except AIServiceError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.message)
     except ValueError as e:
         raise HTTPException(status_code=502, detail=str(e))
     except Exception as e:

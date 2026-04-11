@@ -1,9 +1,21 @@
 import json
+import logging
 import re
 from datetime import date
+import anthropic
 from anthropic import Anthropic
 from config import settings
 from schemas import PlanCreateRequest, ClaudePlanResponse, ChatMessage, CoachChatRequest
+
+logger = logging.getLogger(__name__)
+
+
+class AIServiceError(Exception):
+    """User-friendly error for LLM API failures."""
+    def __init__(self, message: str, status_code: int = 502):
+        self.message = message
+        self.status_code = status_code
+        super().__init__(message)
 
 
 def _extract_json(text: str) -> str:
@@ -67,7 +79,8 @@ def _get_openai_client():
 def _call_model(model: str, system: str, messages: list[dict], max_tokens: int) -> str:
     """Unified call that routes to Anthropic or OpenAI based on the model name."""
     if model.startswith("gpt-"):
-        from openai import BadRequestError, AuthenticationError
+        from openai import BadRequestError, AuthenticationError as OAIAuthError
+        from openai import RateLimitError as OAIRateLimit, APIConnectionError as OAIConnError
         client = _get_openai_client()
         openai_messages = [{"role": "system", "content": system}] + messages
         try:
@@ -76,19 +89,47 @@ def _call_model(model: str, system: str, messages: list[dict], max_tokens: int) 
                 max_tokens=min(max_tokens, 4096),
                 messages=openai_messages,
             )
+        except OAIAuthError as e:
+            logger.error("OpenAI auth error: %s", e)
+            raise AIServiceError("AI service authentication failed. Please contact support.", 502) from e
+        except OAIRateLimit as e:
+            logger.warning("OpenAI rate limit: %s", e)
+            raise AIServiceError("AI service is temporarily overloaded. Please try again in a minute.", 429) from e
+        except (OAIConnError,) as e:
+            logger.error("OpenAI connection error: %s", e)
+            raise AIServiceError("Could not reach the AI service. Please try again.", 503) from e
         except BadRequestError as e:
-            raise ValueError(f"OpenAI request failed: {e}") from e
-        except AuthenticationError as e:
-            raise RuntimeError(f"OpenAI authentication failed: {e}") from e
+            logger.error("OpenAI bad request: %s", e)
+            raise AIServiceError(f"AI request failed: {e}", 400) from e
         return response.choices[0].message.content
     else:
         client = _get_client()
-        response = client.messages.create(
-            model=model,
-            max_tokens=max_tokens,
-            system=system,
-            messages=messages,
-        )
+        try:
+            response = client.messages.create(
+                model=model,
+                max_tokens=max_tokens,
+                system=system,
+                messages=messages,
+            )
+        except anthropic.AuthenticationError as e:
+            logger.error("Anthropic auth error: %s", e)
+            raise AIServiceError("AI service authentication failed. Please contact support.", 502) from e
+        except anthropic.RateLimitError as e:
+            logger.warning("Anthropic rate limit: %s", e)
+            raise AIServiceError("AI service is temporarily overloaded. Please try again in a minute.", 429) from e
+        except (anthropic.APIConnectionError, anthropic.APITimeoutError) as e:
+            logger.error("Anthropic connection/timeout: %s", e)
+            raise AIServiceError("Could not reach the AI service. Please try again.", 503) from e
+        except anthropic.BadRequestError as e:
+            err_msg = str(e).lower()
+            if "credit" in err_msg or "balance" in err_msg or "billing" in err_msg:
+                logger.error("Anthropic billing issue: %s", e)
+                raise AIServiceError("AI service billing issue. Please contact support.", 502) from e
+            logger.error("Anthropic bad request: %s", e)
+            raise AIServiceError(f"AI request failed: {e}", 400) from e
+        except anthropic.APIError as e:
+            logger.error("Anthropic API error: %s", e)
+            raise AIServiceError("AI service error. Please try again later.", 502) from e
         return response.content[0].text
 
 
@@ -853,12 +894,16 @@ def generate_steps_for_workouts(workouts: list[dict]) -> dict[int, list[dict]]:
 
     batch_prompt = "Generate steps for these workouts:\n" + json.dumps(workouts, indent=2)
 
-    response = client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=min(len(workouts) * 400 + 1000, 16000),
-        system=STEPS_SYSTEM,
-        messages=[{"role": "user", "content": batch_prompt}],
-    )
+    try:
+        response = client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=min(len(workouts) * 400 + 1000, 16000),
+            system=STEPS_SYSTEM,
+            messages=[{"role": "user", "content": batch_prompt}],
+        )
+    except anthropic.APIError as e:
+        logger.error("Steps generation API error: %s", e)
+        raise AIServiceError("Could not generate workout steps. Please try again.", 502) from e
 
     raw = _extract_json(response.content[0].text)
 
@@ -996,12 +1041,16 @@ Actual activity:
             )
         prompt += "\n\nStrava laps:\n" + "\n".join(lap_lines)
 
-    response = client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=500,
-        system=_MATCH_SYSTEM,
-        messages=[{"role": "user", "content": prompt}],
-    )
+    try:
+        response = client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=500,
+            system=_MATCH_SYSTEM,
+            messages=[{"role": "user", "content": prompt}],
+        )
+    except anthropic.APIError as e:
+        logger.error("Match analysis API error: %s", e)
+        raise AIServiceError("Could not analyze workout match. Please try again.", 502) from e
 
     try:
         data = json.loads(_extract_json(response.content[0].text))
