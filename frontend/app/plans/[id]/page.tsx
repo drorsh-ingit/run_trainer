@@ -399,6 +399,15 @@ export default function PlanDetailPage() {
     if (planRes.ok) setPlan(await planRes.json());
   }, [id]);
 
+  const handleToggleCompleted = useCallback(async (workoutId: number) => {
+    const res = await apiFetch(`/workouts/${workoutId}/toggle-completed`, { method: "PATCH" });
+    if (!res.ok) return;
+    setPlan(prev => prev ? {
+      ...prev,
+      workouts: prev.workouts.map(w => w.id === workoutId ? { ...w, completed: !w.completed } : w),
+    } : prev);
+  }, []);
+
   // --- Assessment handlers ---
 
   const processAssessSSE = async (res: Response) => {
@@ -1368,6 +1377,18 @@ export default function PlanDetailPage() {
                       </button>
                     )}
                   </div>
+                  {!w.activity && w.workout_type !== "rest" && (
+                    <button
+                      onClick={() => handleToggleCompleted(w.id)}
+                      className="shrink-0 self-center ml-auto"
+                      title={w.completed ? "Mark as not done" : "Mark as done"}
+                    >
+                      <div className={`relative w-9 h-5 rounded-full transition-colors ${w.completed ? "bg-green-500" : "bg-gray-300"}`}>
+                        <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${w.completed ? "translate-x-4" : "translate-x-0.5"}`} />
+                      </div>
+                      <span className="text-[10px] text-gray-400 block text-center mt-0.5">{w.completed ? "done" : "not done"}</span>
+                    </button>
+                  )}
                 </div>
                 );
               })}
