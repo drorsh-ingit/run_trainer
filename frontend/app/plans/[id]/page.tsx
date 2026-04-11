@@ -1322,21 +1322,21 @@ export default function PlanDetailPage() {
                             const paceStr = paceVal ? `${Math.floor(paceVal)}:${String(Math.round((paceVal % 1) * 60)).padStart(2, "0")}` : "—";
                             const timeStr = `${Math.floor(lap.moving_time / 60)}:${String(lap.moving_time % 60).padStart(2, "0")}`;
                             return (
-                              <div key={lap.lap_index} className="flex gap-3 text-[11px] text-gray-500 font-mono">
-                                <span className="text-gray-300 w-4 text-right">{lap.lap_index}</span>
-                                <span className="w-14">{distKm} km</span>
-                                <span className="w-14">{paceStr}/km</span>
-                                <span className="w-12">{timeStr}</span>
-                                {lap.average_heartrate && <span className="w-12">{Math.round(lap.average_heartrate)} bpm</span>}
+                              <div key={lap.lap_index} className="flex flex-wrap gap-x-3 gap-y-0 text-[11px] text-gray-500 font-mono py-0.5 border-b border-gray-50 last:border-0">
+                                <span className="text-gray-300 w-3 text-right shrink-0">{lap.lap_index}</span>
+                                <span className="shrink-0">{distKm}km</span>
+                                <span className="shrink-0">{paceStr}/km</span>
+                                <span className="shrink-0">{timeStr}</span>
+                                {lap.average_heartrate && <span className="shrink-0">{Math.round(lap.average_heartrate)}bpm</span>}
                                 {(lap.elevation_gain != null || lap.elevation_loss != null) && (
-                                  <span className="w-20">
+                                  <span className="shrink-0">
                                     {lap.elevation_gain != null && <span className="text-green-600">+{Math.round(lap.elevation_gain)}</span>}
                                     {lap.elevation_loss != null && <span className="text-red-500">/{-Math.round(lap.elevation_loss)}</span>}
                                     <span className="text-gray-400">m</span>
                                   </span>
                                 )}
                                 {lap.hr_zones && (
-                                  <span className="text-[10px] text-gray-400">
+                                  <span className="shrink-0 text-[10px] text-gray-400">
                                     {["Z1","Z2","Z3","Z4","Z5"].map((z, i) => lap.hr_zones![i] > 0 ? `${z}:${lap.hr_zones![i]}%` : null).filter(Boolean).join(" ")}
                                   </span>
                                 )}
