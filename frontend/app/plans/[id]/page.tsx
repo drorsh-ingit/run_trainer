@@ -375,7 +375,7 @@ export default function PlanDetailPage() {
   };
 
   const handleRescore = async () => {
-    if (!confirm("Recalculate all match scores? This will use AI credits for each matched activity.")) return;
+    if (!confirm("Are you sure you want to recalculate scores for all matched activities? This might take a while")) return;
     setShowPullMenu(false);
     setRescoring(true);
     setActivitySyncResult("Recalculating scores…");
