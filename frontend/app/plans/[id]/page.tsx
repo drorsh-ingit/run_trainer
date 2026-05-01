@@ -941,7 +941,7 @@ export default function PlanDetailPage() {
 
         {/* Assessment panel */}
         {assessOpen && (
-          <div ref={assessPanelRef} className="bg-white rounded-2xl shadow-sm border-2 border-amber-300 overflow-hidden">
+          <div ref={assessPanelRef} className="bg-white rounded-2xl shadow-sm border-2 border-amber-300 overflow-hidden scroll-mt-48">
             <div className="px-6 pt-5 pb-3 border-b border-amber-200 bg-amber-50">
               <div className="flex items-start justify-between gap-4">
                 <div>
@@ -1226,7 +1226,7 @@ export default function PlanDetailPage() {
           <div
             key={weekNum}
             ref={el => { if (el) weekRefs.current.set(weekNum, el); }}
-            className="rounded-2xl shadow-sm border border-gray-200 bg-white p-6"
+            className="rounded-2xl shadow-sm border border-gray-200 bg-white p-6 scroll-mt-48"
           >
             <div className="flex items-center justify-between mb-4">
               <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
@@ -1408,7 +1408,7 @@ export default function PlanDetailPage() {
         })}
 
         {/* Chat panel */}
-        <div ref={chatPanelRef} className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+        <div ref={chatPanelRef} className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden scroll-mt-48">
           <div className="px-6 pt-5 pb-3 border-b border-gray-100">
             <div className="flex items-start justify-between gap-4">
               <div>
