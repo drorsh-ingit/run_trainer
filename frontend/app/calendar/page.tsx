@@ -53,6 +53,18 @@ type Plan = {
   workouts: Workout[];
 };
 
+type MatchCandidate = {
+  id: number;
+  scheduled_date: string;
+  workout_type: string;
+  description: string;
+  target_distance_km: number | null;
+  distance_label: string | null;
+  week_number: number;
+  has_activity: boolean;
+  matched_distance_km: number | null;
+};
+
 function RaceDayMarker({ goalDate }: { goalDate: string }) {
   return (
     <div className="rounded-lg px-2 py-1.5 border-2 border-yellow-400 bg-gradient-to-br from-yellow-50 to-amber-100 text-yellow-900 shadow-sm">
@@ -137,7 +149,7 @@ function formatDuration(secs: number): string {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
-function WorkoutTooltip({ workout, cellRef, onIgnore, ignoring, onMouseEnter, onMouseLeave }: { workout: Workout; cellRef: React.RefObject<HTMLDivElement | null>; onIgnore?: () => void; ignoring?: boolean; onMouseEnter?: () => void; onMouseLeave?: () => void }) {
+function WorkoutTooltip({ workout, cellRef, onIgnore, ignoring, onMatch, onMouseEnter, onMouseLeave }: { workout: Workout; cellRef: React.RefObject<HTMLDivElement | null>; onIgnore?: () => void; ignoring?: boolean; onMatch?: () => void; onMouseEnter?: () => void; onMouseLeave?: () => void }) {
   const tooltipRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
 
@@ -221,6 +233,11 @@ function WorkoutTooltip({ workout, cellRef, onIgnore, ignoring, onMouseEnter, on
               {ignoring ? "ignoring…" : "ignore activity"}
             </button>
           )}
+          {onMatch && (
+            <button onClick={onMatch} className="mt-1 opacity-50 hover:opacity-90 transition-opacity text-[10px] text-blue-600">
+              re-match
+            </button>
+          )}
         </div>
       )}
 
@@ -231,7 +248,7 @@ function WorkoutTooltip({ workout, cellRef, onIgnore, ignoring, onMouseEnter, on
   );
 }
 
-function WorkoutCell({ workout, isCurrentMonth, onIgnore, ignoring }: { workout: Workout; isCurrentMonth: boolean; onIgnore?: () => void; ignoring?: boolean }) {
+function WorkoutCell({ workout, isCurrentMonth, onIgnore, ignoring, onMatch }: { workout: Workout; isCurrentMonth: boolean; onIgnore?: () => void; ignoring?: boolean; onMatch?: () => void }) {
   const [hovered, setHovered] = useState(false);
   const cellRef = useRef<HTMLDivElement>(null);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -260,7 +277,7 @@ function WorkoutCell({ workout, isCurrentMonth, onIgnore, ignoring }: { workout:
             <div className="text-[10px] font-semibold mt-0.5 opacity-80">{workout.distance_label ?? `${workout.target_distance_km} km`}</div>
           )}
         </div>
-        {hovered && <WorkoutTooltip workout={workout} cellRef={cellRef} onMouseEnter={showTooltip} onMouseLeave={hideTooltip} />}
+        {hovered && <WorkoutTooltip workout={workout} cellRef={cellRef} onMatch={onMatch} onMouseEnter={showTooltip} onMouseLeave={hideTooltip} />}
       </div>
     );
   }
@@ -318,6 +335,7 @@ function WorkoutCell({ workout, isCurrentMonth, onIgnore, ignoring }: { workout:
           cellRef={cellRef}
           onIgnore={workout.activity?.strava_activity_id ? onIgnore : undefined}
           ignoring={ignoring}
+          onMatch={onMatch}
           onMouseEnter={showTooltip}
           onMouseLeave={hideTooltip}
         />
@@ -326,7 +344,7 @@ function WorkoutCell({ workout, isCurrentMonth, onIgnore, ignoring }: { workout:
   );
 }
 
-function ActivityTooltip({ activity, cellRef, onIgnore, ignoring, onMouseEnter, onMouseLeave }: { activity: ActivityEntry; cellRef: React.RefObject<HTMLDivElement | null>; onIgnore?: () => void; ignoring?: boolean; onMouseEnter?: () => void; onMouseLeave?: () => void }) {
+function ActivityTooltip({ activity, cellRef, onIgnore, ignoring, onMatch, onMouseEnter, onMouseLeave }: { activity: ActivityEntry; cellRef: React.RefObject<HTMLDivElement | null>; onIgnore?: () => void; ignoring?: boolean; onMatch?: () => void; onMouseEnter?: () => void; onMouseLeave?: () => void }) {
   const tooltipRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
   const pace = activity.average_pace_min_per_km;
@@ -368,11 +386,16 @@ function ActivityTooltip({ activity, cellRef, onIgnore, ignoring, onMouseEnter, 
           {ignoring ? "ignoring…" : "ignore activity"}
         </button>
       )}
+      {onMatch && (
+        <button onClick={onMatch} className="pt-1 opacity-50 hover:opacity-90 transition-opacity text-[10px] block text-blue-600">
+          match to workout
+        </button>
+      )}
     </div>
   );
 }
 
-function ActivityCell({ activity, isCurrentMonth, onIgnore, ignoring }: { activity: ActivityEntry; isCurrentMonth: boolean; onIgnore?: () => void; ignoring?: boolean }) {
+function ActivityCell({ activity, isCurrentMonth, onIgnore, ignoring, onMatch }: { activity: ActivityEntry; isCurrentMonth: boolean; onIgnore?: () => void; ignoring?: boolean; onMatch?: () => void }) {
   const [hovered, setHovered] = useState(false);
   const cellRef = useRef<HTMLDivElement>(null);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -404,10 +427,99 @@ function ActivityCell({ activity, isCurrentMonth, onIgnore, ignoring }: { activi
           cellRef={cellRef}
           onIgnore={onIgnore}
           ignoring={ignoring}
+          onMatch={onMatch}
           onMouseEnter={showTooltip}
           onMouseLeave={hideTooltip}
         />
       )}
+    </div>
+  );
+}
+
+
+function MatchModal({ activityId, activityDate, activityName, planId, onClose, onMatched }: {
+  activityId: string;
+  activityDate: string;
+  activityName: string;
+  planId: string;
+  onClose: () => void;
+  onMatched: () => void;
+}) {
+  const [candidates, setCandidates] = useState<MatchCandidate[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [matching, setMatching] = useState<number | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      const res = await apiFetch(`/plans/${planId}/match-candidates?activity_date=${activityDate}`);
+      if (res.ok) setCandidates(await res.json());
+      setLoading(false);
+    })();
+  }, [planId, activityDate]);
+
+  const handleMatch = async (workoutId: number) => {
+    setMatching(workoutId);
+    const res = await apiFetch(`/plans/${planId}/manual-match`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ activity_strava_id: activityId, workout_id: workoutId }),
+    });
+    if (res.ok) {
+      onMatched();
+      onClose();
+    }
+    setMatching(null);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-xl p-5 w-full max-w-sm mx-4" onClick={e => e.stopPropagation()}>
+        <h3 className="text-sm font-semibold text-gray-900 mb-1">Match to workout</h3>
+        <p className="text-xs text-gray-500 mb-4">{activityName} ({activityDate})</p>
+
+        {loading ? (
+          <div className="text-xs text-gray-400 text-center py-6">Loading workouts...</div>
+        ) : candidates.length === 0 ? (
+          <div className="text-xs text-gray-400 text-center py-6">No nearby workouts found</div>
+        ) : (
+          <div className="space-y-1.5 max-h-80 overflow-y-auto">
+            {candidates.map(w => {
+              const colors = WORKOUT_COLORS[w.workout_type] ?? "bg-gray-100 text-gray-600";
+              return (
+                <button
+                  key={w.id}
+                  onClick={() => handleMatch(w.id)}
+                  disabled={matching !== null}
+                  className={`w-full text-left rounded-xl border border-gray-200 px-3 py-2.5 transition-all hover:border-blue-300 hover:shadow-sm disabled:opacity-50 ${matching === w.id ? "ring-2 ring-blue-400" : ""}`}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded capitalize ${colors}`}>
+                      {w.workout_type.replace(/_/g, " ")}
+                    </span>
+                    <span className="text-[11px] text-gray-500">{w.scheduled_date}</span>
+                    <span className="text-[10px] text-gray-400 ml-auto">W{w.week_number}</span>
+                  </div>
+                  <div className="flex items-center gap-2 mt-1">
+                    {(w.distance_label || w.target_distance_km != null) && (
+                      <span className="text-xs text-gray-700">{w.distance_label ?? `${w.target_distance_km} km`}</span>
+                    )}
+                    {w.has_activity && (
+                      <span className="text-[10px] text-amber-600">
+                        matched ({w.matched_distance_km != null ? `${w.matched_distance_km} km` : "activity"})
+                      </span>
+                    )}
+                  </div>
+                  {matching === w.id && <div className="text-[10px] text-blue-500 mt-1">matching...</div>}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        <button onClick={onClose} className="mt-4 w-full border border-gray-200 text-gray-600 rounded-xl py-2 text-sm hover:bg-gray-50 transition-colors">
+          Cancel
+        </button>
+      </div>
     </div>
   );
 }
@@ -452,6 +564,15 @@ function CalendarPage() {
     const res = await apiFetch(`/plans/${resolvedPlanId}/activities/${activityId}`, { method: "DELETE" });
     if (res.ok) await reloadActivities(resolvedPlanId);
     setIgnoringId(null);
+  };
+
+  const [matchingActivity, setMatchingActivity] = useState<{ strava_activity_id: string; date: string; name: string } | null>(null);
+  const handleOpenMatch = (activityId: string, activityDate: string, name: string) => {
+    setMatchingActivity({ strava_activity_id: activityId, date: activityDate, name });
+  };
+  const handleMatchComplete = async () => {
+    if (resolvedPlanId) await reloadActivities(resolvedPlanId);
+    setMatchingActivity(null);
   };
 
   useEffect(() => {
@@ -632,6 +753,7 @@ function CalendarPage() {
                       isCurrentMonth={isCurrentMonth}
                       onIgnore={workout.activity?.strava_activity_id ? () => handleIgnoreActivity(workout.activity!.strava_activity_id!) : undefined}
                       ignoring={ignoringId === workout.activity?.strava_activity_id}
+                      onMatch={workout.activity?.strava_activity_id ? () => handleOpenMatch(workout.activity!.strava_activity_id!, workout.scheduled_date, workout.activity!.strava_activity_id!) : undefined}
                     />
                   )}
                   {!workout && isGoalDate && goalDateKey && (
@@ -644,6 +766,7 @@ function CalendarPage() {
                       isCurrentMonth={isCurrentMonth}
                       onIgnore={() => handleIgnoreActivity(act.strava_activity_id)}
                       ignoring={ignoringId === act.strava_activity_id}
+                      onMatch={() => handleOpenMatch(act.strava_activity_id, act.date, act.name ?? "Run")}
                     />
                   ))}
                 </div>
@@ -653,6 +776,16 @@ function CalendarPage() {
         </div>
 
       </div>
+      {matchingActivity && resolvedPlanId && (
+        <MatchModal
+          activityId={matchingActivity.strava_activity_id}
+          activityDate={matchingActivity.date}
+          activityName={matchingActivity.name}
+          planId={resolvedPlanId}
+          onClose={() => setMatchingActivity(null)}
+          onMatched={handleMatchComplete}
+        />
+      )}
     </div>
   );
 }

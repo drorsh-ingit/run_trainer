@@ -1,14 +1,15 @@
 import json
-from datetime import datetime
-from typing import Generator
+from datetime import datetime, date as date_type
+from typing import Generator, List
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from database import get_db
 from models.models import GarminSession, IgnoredActivity, PlannedWorkout, TrainingPlan, User, WorkoutActivity
+from schemas import ManualMatchRequest, MatchCandidateOut
 from services.auth import get_current_user
 from services.claude import generate_steps_for_workouts
 from services.garmin import (
@@ -354,3 +355,162 @@ def garmin_sync(
     except Exception as e:
         raise HTTPException(502, f"Sync failed: {e}")
     return result
+
+
+# ── /plans/{plan_id}/match-candidates ────────────────────────────────────────
+
+@plans_router.get("/{plan_id}/match-candidates", response_model=List[MatchCandidateOut])
+def match_candidates(
+    plan_id: int,
+    activity_date: date_type = Query(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return up to 3 workouts before and 3 after activity_date for manual matching."""
+    plan = db.query(TrainingPlan).filter(TrainingPlan.id == plan_id).first()
+    if not plan or plan.user_id != current_user.id:
+        raise HTTPException(404, "Plan not found or not authorized")
+
+    base = (
+        db.query(PlannedWorkout)
+        .filter(PlannedWorkout.plan_id == plan_id, PlannedWorkout.workout_type != "rest")
+    )
+
+    before = (
+        base.filter(PlannedWorkout.scheduled_date <= activity_date)
+        .order_by(PlannedWorkout.scheduled_date.desc())
+        .limit(3)
+        .all()
+    )[::-1]
+
+    after = (
+        base.filter(PlannedWorkout.scheduled_date > activity_date)
+        .order_by(PlannedWorkout.scheduled_date.asc())
+        .limit(3)
+        .all()
+    )
+
+    results = []
+    for w in before + after:
+        act = w.activity
+        results.append(MatchCandidateOut(
+            id=w.id,
+            scheduled_date=w.scheduled_date,
+            workout_type=w.workout_type,
+            description=w.description,
+            target_distance_km=w.target_distance_km,
+            distance_label=w.distance_label,
+            week_number=w.week_number,
+            has_activity=act is not None,
+            matched_distance_km=act.actual_distance_km if act else None,
+        ))
+    return results
+
+
+# ── /plans/{plan_id}/manual-match ────────────────────────────────────────────
+
+@plans_router.post("/{plan_id}/manual-match")
+def manual_match(
+    plan_id: int,
+    body: ManualMatchRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Manually match an activity to a workout, replacing any existing links."""
+    plan = db.query(TrainingPlan).filter(TrainingPlan.id == plan_id).first()
+    if not plan or plan.user_id != current_user.id:
+        raise HTTPException(404, "Plan not found or not authorized")
+
+    activity_row = (
+        db.query(WorkoutActivity)
+        .filter(
+            WorkoutActivity.strava_activity_id == body.activity_strava_id,
+            (WorkoutActivity.plan_id == plan_id)
+            | (WorkoutActivity.workout_id.in_(
+                db.query(PlannedWorkout.id).filter(PlannedWorkout.plan_id == plan_id)
+            )),
+        )
+        .first()
+    )
+    if not activity_row:
+        raise HTTPException(404, "Activity not found")
+
+    target_workout = (
+        db.query(PlannedWorkout)
+        .filter(PlannedWorkout.id == body.workout_id, PlannedWorkout.plan_id == plan_id)
+        .first()
+    )
+    if not target_workout:
+        raise HTTPException(404, "Workout not found")
+
+    # Unlink activity from its current workout (if any)
+    if activity_row.workout_id and activity_row.workout_id != target_workout.id:
+        old_workout = db.query(PlannedWorkout).filter(PlannedWorkout.id == activity_row.workout_id).first()
+        if old_workout:
+            old_workout.completed = False
+            old_workout.strava_activity_id = None
+        activity_row.workout_id = None
+        db.flush()
+
+    # Unlink the target workout's current activity (if any)
+    if target_workout.activity and target_workout.activity.strava_activity_id != body.activity_strava_id:
+        displaced = target_workout.activity
+        displaced.workout_id = None
+        displaced.match_score = None
+        displaced.match_comment = None
+        target_workout.completed = False
+        target_workout.strava_activity_id = None
+        db.flush()
+
+    # Link the activity to the target workout
+    activity_row.workout_id = target_workout.id
+    target_workout.completed = True
+    target_workout.strava_activity_id = activity_row.strava_activity_id
+
+    # Score the match
+    score, comment = None, None
+    try:
+        from services.claude import generate_match_analysis
+        actual_km = activity_row.actual_distance_km or 0
+        actual_pace = None
+        if activity_row.average_speed_ms and activity_row.average_speed_ms > 0:
+            actual_pace = 1000 / (activity_row.average_speed_ms * 60)
+
+        hr_zones = None
+        if activity_row.streams_data and "hr_zones" in activity_row.streams_data:
+            hr_zones = activity_row.streams_data["hr_zones"]
+
+        result = generate_match_analysis(
+            workout_type=target_workout.workout_type,
+            description=target_workout.description,
+            target_distance_km=target_workout.target_distance_km,
+            target_duration_min=target_workout.target_duration_minutes,
+            actual_distance_km=actual_km,
+            actual_duration_sec=activity_row.actual_duration_sec,
+            actual_pace_min_per_km=actual_pace,
+            average_hr=activity_row.average_hr,
+            hr_zones=hr_zones,
+            elevation_gain=activity_row.streams_data.get("elevation_gain") if activity_row.streams_data else None,
+            elevation_loss=activity_row.streams_data.get("elevation_loss") if activity_row.streams_data else None,
+            laps=activity_row.streams_data.get("laps") if activity_row.streams_data else None,
+            planned_steps=target_workout.steps,
+            distance_label=target_workout.distance_label,
+        )
+        if result:
+            score, comment = result
+    except Exception:
+        pass
+
+    if score is None:
+        from services.strava import _score_match
+        actual_km = activity_row.actual_distance_km or 0
+        actual_pace = None
+        if activity_row.average_speed_ms and activity_row.average_speed_ms > 0:
+            actual_pace = 1000 / (activity_row.average_speed_ms * 60)
+        score, comment = _score_match(target_workout, actual_km, actual_pace)
+
+    activity_row.match_score = score
+    activity_row.match_comment = comment
+    db.commit()
+
+    return {"match_score": score, "match_comment": comment}

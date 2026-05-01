@@ -334,3 +334,24 @@ class AdminPlanOut(BaseModel):
     created_at: str
 
     model_config = {"from_attributes": True}
+
+
+# ---- Manual matching ----
+
+class MatchCandidateOut(BaseModel):
+    id: int
+    scheduled_date: date
+    workout_type: str
+    description: str
+    target_distance_km: Optional[float]
+    distance_label: Optional[str]
+    week_number: int
+    has_activity: bool
+    matched_distance_km: Optional[float] = None
+
+    model_config = {"from_attributes": True}
+
+
+class ManualMatchRequest(BaseModel):
+    activity_strava_id: str
+    workout_id: int
