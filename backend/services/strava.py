@@ -329,35 +329,32 @@ def sync_plan_activities(plan_id: int, user_id: int, db: Session) -> dict:
         actual_pace = round(1000 / (avg_speed * 60), 2) if avg_speed and avg_speed > 0 else None
         workout = act_to_workout.get(act_id)
 
-        # Fetch streams for matched activities only (avoid excessive API calls)
         streams = {}
-        if workout:
-            try:
-                streams = fetch_streams(access_token, act_id)
-                if "heartrate" in streams and max_hr:
-                    streams["hr_zones"] = compute_hr_zones(streams["heartrate"], max_hr)
-                # Compute elevation gain/loss from altitude stream
-                if "altitude" in streams:
-                    gain, loss = _compute_elevation(streams["altitude"])
-                    streams["elevation_gain"] = gain
-                    streams["elevation_loss"] = loss
-                laps = fetch_laps(access_token, act_id)
-                if laps:
-                    for lap in laps:
-                        si, ei = lap.get("start_index", 0), lap.get("end_index")
-                        if "altitude" in streams:
-                            lg, ll = _compute_elevation(streams["altitude"], si, ei)
-                            lap["elevation_gain"] = lg
-                            lap["elevation_loss"] = ll
-                        if "heartrate" in streams and max_hr:
-                            end = ei if ei is not None else len(streams["heartrate"]) - 1
-                            hr_slice = streams["heartrate"][si:end + 1]
-                            if hr_slice:
-                                lap["hr_zones"] = compute_hr_zones(hr_slice, max_hr)
-                if laps:
-                    streams["laps"] = laps
-            except Exception as e:
-                errors.append(f"Streams/laps fetch failed for activity {act_id}: {e}")
+        try:
+            streams = fetch_streams(access_token, act_id)
+            if "heartrate" in streams and max_hr:
+                streams["hr_zones"] = compute_hr_zones(streams["heartrate"], max_hr)
+            if "altitude" in streams:
+                gain, loss = _compute_elevation(streams["altitude"])
+                streams["elevation_gain"] = gain
+                streams["elevation_loss"] = loss
+            laps = fetch_laps(access_token, act_id)
+            if laps:
+                for lap in laps:
+                    si, ei = lap.get("start_index", 0), lap.get("end_index")
+                    if "altitude" in streams:
+                        lg, ll = _compute_elevation(streams["altitude"], si, ei)
+                        lap["elevation_gain"] = lg
+                        lap["elevation_loss"] = ll
+                    if "heartrate" in streams and max_hr:
+                        end = ei if ei is not None else len(streams["heartrate"]) - 1
+                        hr_slice = streams["heartrate"][si:end + 1]
+                        if hr_slice:
+                            lap["hr_zones"] = compute_hr_zones(hr_slice, max_hr)
+            if laps:
+                streams["laps"] = laps
+        except Exception as e:
+            errors.append(f"Streams/laps fetch failed for activity {act_id}: {e}")
 
         row = WorkoutActivity(plan_id=plan_id, workout_id=workout.id if workout else None)
         db.add(row)
@@ -402,6 +399,69 @@ def sync_plan_activities(plan_id: int, user_id: int, db: Session) -> dict:
         else:
             new_unmatched += 1
 
+    # Backfill streams for existing activities missing stream data
+    backfilled = 0
+    for row in kept_rows.values():
+        if row.streams_data:
+            continue
+        try:
+            streams = fetch_streams(access_token, row.strava_activity_id)
+            if "heartrate" in streams and max_hr:
+                streams["hr_zones"] = compute_hr_zones(streams["heartrate"], max_hr)
+            if "altitude" in streams:
+                gain, loss = _compute_elevation(streams["altitude"])
+                streams["elevation_gain"] = gain
+                streams["elevation_loss"] = loss
+            laps = fetch_laps(access_token, row.strava_activity_id)
+            if laps:
+                for lap in laps:
+                    si, ei = lap.get("start_index", 0), lap.get("end_index")
+                    if "altitude" in streams:
+                        lg, ll = _compute_elevation(streams["altitude"], si, ei)
+                        lap["elevation_gain"] = lg
+                        lap["elevation_loss"] = ll
+                    if "heartrate" in streams and max_hr:
+                        end = ei if ei is not None else len(streams["heartrate"]) - 1
+                        hr_slice = streams["heartrate"][si:end + 1]
+                        if hr_slice:
+                            lap["hr_zones"] = compute_hr_zones(hr_slice, max_hr)
+            if laps:
+                streams["laps"] = laps
+            row.streams_data = streams or None
+
+            # Rescore if matched to a workout
+            if row.workout_id and row.workout_id in workout_map and streams:
+                w = workout_map[row.workout_id]
+                actual_km = row.actual_distance_km or 0
+                actual_pace = round(1000 / (row.average_speed_ms * 60), 2) if row.average_speed_ms and row.average_speed_ms > 0 else None
+                hr_zones = streams.get("hr_zones")
+                try:
+                    from services.claude import generate_match_analysis
+                    score, comment = generate_match_analysis(
+                        workout_type=w.workout_type,
+                        description=w.description or "",
+                        target_distance_km=w.target_distance_km,
+                        target_duration_min=w.target_duration_minutes,
+                        actual_distance_km=actual_km,
+                        actual_duration_sec=row.actual_duration_sec,
+                        actual_pace_min_per_km=actual_pace,
+                        average_hr=row.average_hr,
+                        hr_zones=hr_zones,
+                        elevation_gain=streams.get("elevation_gain"),
+                        elevation_loss=streams.get("elevation_loss"),
+                        laps=streams.get("laps"),
+                        planned_steps=w.steps,
+                        distance_label=w.distance_label,
+                    )
+                except Exception:
+                    score, comment = _score_match(w, actual_km, actual_pace)
+                row.match_score = score
+                row.match_comment = comment
+
+            backfilled += 1
+        except Exception as e:
+            errors.append(f"Backfill streams failed for {row.strava_activity_id}: {e}")
+
     db.commit()
     new_total = len(new_activities)
     total_matched = sum(1 for r in kept_rows.values() if r.workout_id) + new_synced
@@ -411,6 +471,7 @@ def sync_plan_activities(plan_id: int, user_id: int, db: Session) -> dict:
         "new_total": new_total,
         "total": len(run_activities),
         "total_matched": total_matched,
+        "backfilled": backfilled,
         "errors": errors,
     }
 
