@@ -1,4 +1,6 @@
 import json
+import time
+import threading
 from datetime import date, timedelta
 from typing import Generator
 from fastapi import APIRouter, Depends, HTTPException
@@ -568,23 +570,40 @@ def assess_build(
 
     def stream() -> Generator[str, None, None]:
         yield _chat_sse({"type": "status", "message": "Building revised plan…"})
-        try:
-            model = body.ai_model or plan.ai_model or "claude-sonnet-4-6"
-            from schemas import ChatMessage
-            chat_history = [ChatMessage(role=m.role, content=m.content) for m in body.history]
-            revised = assess_build_plan(
-                comparison, future_plan, plan_context,
-                history=chat_history,
-                model=model,
-            )
-        except Exception as e:
-            yield _chat_sse({"type": "error", "message": str(e)})
+
+        model = body.ai_model or plan.ai_model or "claude-sonnet-4-6"
+        from schemas import ChatMessage
+        chat_history = [ChatMessage(role=m.role, content=m.content) for m in body.history]
+
+        result: list = [None]
+        error: list = [None]
+
+        def run_build():
+            try:
+                result[0] = assess_build_plan(
+                    comparison, future_plan, plan_context,
+                    history=chat_history,
+                    model=model,
+                )
+            except Exception as e:
+                error[0] = e
+
+        t = threading.Thread(target=run_build)
+        t.start()
+
+        while t.is_alive():
+            t.join(timeout=15)
+            if t.is_alive():
+                yield ": keepalive\n\n"
+
+        if error[0]:
+            yield _chat_sse({"type": "error", "message": str(error[0])})
             return
 
         yield _chat_sse({
             "type": "plan_preview",
-            "message": revised.summary,
-            "revised_future_plan": revised.model_dump(),
+            "message": result[0].summary,
+            "revised_future_plan": result[0].model_dump(),
         })
 
     return StreamingResponse(stream(), media_type="text/event-stream",
