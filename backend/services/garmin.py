@@ -177,6 +177,80 @@ def build_garmin_workout_payload(workout) -> dict:
     }
 
 
+# ── FIT file generation ────────────────────────────────────────────────────
+
+_FIT_INTENSITY = {"warmup": 2, "active": 0, "rest": 1, "cooldown": 3}
+
+
+def _step_to_fit(step: dict, index: int) -> dict:
+    mesg: dict = {
+        "mesg_num": 27,  # WORKOUT_STEP
+        "message_index": index,
+        "intensity": _FIT_INTENSITY.get(step.get("step_type", "active"), 0),
+    }
+
+    dtype = step.get("duration_type", "TIME")
+    if dtype == "TIME":
+        mesg["duration_type"] = 0  # time
+        mesg["duration_value"] = step["duration_value"] * 1000  # sec → ms
+    elif dtype == "DISTANCE":
+        mesg["duration_type"] = 1  # distance
+        mesg["duration_value"] = step["duration_value"] * 100  # m → cm
+    else:
+        mesg["duration_type"] = 5  # open
+
+    ttype = step.get("target_type", "OPEN")
+    if ttype == "PACE":
+        low_sec = step.get("target_low")
+        high_sec = step.get("target_high")
+        if low_sec and high_sec:
+            mesg["target_type"] = 0  # speed
+            # low_sec is faster pace (lower sec/km = higher m/s), swap for FIT low<high
+            mesg["custom_target_value_low"] = round(1000.0 / high_sec * 1000)
+            mesg["custom_target_value_high"] = round(1000.0 / low_sec * 1000)
+        else:
+            mesg["target_type"] = 2  # open
+    elif ttype == "HEART_RATE_ZONE":
+        mesg["target_type"] = 1  # heart_rate
+        mesg["target_value"] = step.get("target_low", 1)
+    else:
+        mesg["target_type"] = 2  # open
+
+    return mesg
+
+
+def build_fit_workout_file(workout) -> bytes:
+    from garmin_fit_sdk import Encoder
+    import datetime
+
+    name = (
+        f"Week {workout.week_number} - "
+        f"{workout.workout_type.replace('_', ' ').title()} "
+        f"({workout.scheduled_date})"
+    )
+    fixed_steps = _fix_step_durations(workout.steps or [], workout.target_duration_minutes)
+
+    encoder = Encoder()
+    encoder.write_mesg({
+        "mesg_num": 0,  # FILE_ID
+        "type": 5,      # workout
+        "manufacturer": 0,
+        "product": 0,
+        "serial_number": 0,
+        "time_created": round(datetime.datetime.now().timestamp()) - 631065600,
+    })
+    encoder.write_mesg({
+        "mesg_num": 26,  # WORKOUT
+        "wkt_name": name[:40],
+        "sport": 1,  # running
+        "num_valid_steps": len(fixed_steps),
+    })
+    for i, step in enumerate(fixed_steps):
+        encoder.write_mesg(_step_to_fit(step, i))
+
+    return encoder.close()
+
+
 # ── Cleanup existing Garmin workouts ─────────────────────────────────────────
 
 def delete_garmin_workouts_for_dates(client: garth.Client, dates: set[str]) -> int:

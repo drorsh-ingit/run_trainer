@@ -130,3 +130,17 @@ class GarminSession(Base):
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
     user = relationship("User")
+
+
+class IntervalsSession(Base):
+    __tablename__ = "intervals_sessions"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), unique=True, nullable=False)
+    api_key_enc = Column(Text, nullable=False)
+    athlete_id = Column(String, nullable=True)
+    athlete_name = Column(String, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    user = relationship("User")

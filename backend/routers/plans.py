@@ -334,6 +334,52 @@ def garmin_export(
     return result
 
 
+@router.get("/{plan_id}/fit-export")
+def fit_export(
+    plan_id: int,
+    month: str | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    import io
+    import zipfile
+    from routers.garmin import _load_workouts, _ensure_steps
+    from services.garmin import build_fit_workout_file
+
+    plan = db.query(TrainingPlan).filter(TrainingPlan.id == plan_id).first()
+    if not plan:
+        raise HTTPException(404, "Plan not found")
+    if not _is_authorized(plan, current_user):
+        raise HTTPException(403, "Not authorized")
+
+    workouts = _load_workouts(db, plan_id, month)
+    _ensure_steps(workouts, db)
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for w in workouts:
+            if not w.steps:
+                continue
+            fit_bytes = build_fit_workout_file(w)
+            fname = f"week{w.week_number}_{w.workout_type}_{w.scheduled_date}.fit"
+            zf.writestr(fname, fit_bytes)
+    buf.seek(0)
+
+    if buf.getbuffer().nbytes <= 22:
+        raise HTTPException(404, "No workouts with steps found")
+
+    filename = f"training-plan-{plan_id}"
+    if month:
+        filename += f"-{month}"
+    filename += ".zip"
+
+    return StreamingResponse(
+        buf,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @router.get("/{plan_id}", response_model=PlanOut)
 def get_plan(plan_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     plan = (

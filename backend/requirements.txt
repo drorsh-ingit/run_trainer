@@ -14,5 +14,6 @@ passlib[bcrypt]==1.7.4
 python-multipart==0.0.12
 garth>=0.4.46
 garminconnect==0.2.22
+garmin-fit-sdk>=21.141.0
 cryptography>=42.0.0
 openai>=1.0.0

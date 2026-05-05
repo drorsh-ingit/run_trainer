@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from database import Base, engine
 from config import settings
-from routers import plans, strava, workouts, auth, garmin as garmin_router, admin
+from routers import plans, strava, workouts, auth, garmin as garmin_router, intervals as intervals_router, admin
 
 logging.basicConfig(
     level=logging.INFO,
@@ -58,6 +58,8 @@ app.include_router(strava.router)
 app.include_router(workouts.router)
 app.include_router(garmin_router.router)
 app.include_router(garmin_router.plans_router)
+app.include_router(intervals_router.router)
+app.include_router(intervals_router.plans_router)
 app.include_router(admin.router)
 
 

@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import Nav from "../../components/Nav";
 import GarminModal from "../../components/GarminModal";
+import IntervalsModal from "../../components/IntervalsModal";
 import GeneratingProgress from "../../components/GeneratingProgress";
 import { apiFetch, useRequireAuth } from "../../hooks/useAuth";
 
@@ -124,7 +125,7 @@ export default function PlanDetailPage() {
   const [pullMenuPos, setPullMenuPos] = useState<{top: number; left: number} | null>(null);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [exportMenuPos, setExportMenuPos] = useState<{top: number; left: number} | null>(null);
-  const [exportSubmenu, setExportSubmenu] = useState<"garmin" | "gcal" | null>(null);
+  const [exportSubmenu, setExportSubmenu] = useState<"garmin" | "intervals" | "fit" | null>(null);
   const exportMenuRef = useRef<HTMLDivElement>(null);
 
   // Garmin state
@@ -133,6 +134,13 @@ export default function PlanDetailPage() {
   const [garminReconnect, setGarminReconnect] = useState(false);
   const [garminPushing, setGarminPushing] = useState(false);
   const [garminPushResult, setGarminPushResult] = useState("");
+
+  // Intervals.icu state
+  const [intervalsStatus, setIntervalsStatus] = useState<{ connected: boolean; athlete_name?: string } | null>(null);
+  const [showIntervalsModal, setShowIntervalsModal] = useState(false);
+  const [intervalsReconnect, setIntervalsReconnect] = useState(false);
+  const [intervalsPushing, setIntervalsPushing] = useState(false);
+  const [intervalsPushResult, setIntervalsPushResult] = useState("");
 
   // Strava state
   const [stravaStatus, setStravaStatus] = useState<{ connected: boolean; athlete_name?: string } | null>(null);
@@ -189,6 +197,10 @@ export default function PlanDetailPage() {
       .then(r => r.json())
       .then(setGarminStatus)
       .catch(() => setGarminStatus({ connected: false }));
+    apiFetch("/intervals/status")
+      .then(r => r.json())
+      .then(setIntervalsStatus)
+      .catch(() => setIntervalsStatus({ connected: false }));
     apiFetch("/strava/status")
       .then(r => r.ok ? r.json() : { connected: false })
       .then(setStravaStatus)
@@ -304,6 +316,61 @@ export default function PlanDetailPage() {
     } catch {
       setGarminPushResult("Push failed: network error");
       setGarminPushing(false);
+    }
+  }, [id]);
+
+  const handleFitDownload = useCallback(async (month?: string) => {
+    const url = month ? `/plans/${id}/fit-export?month=${month}` : `/plans/${id}/fit-export`;
+    try {
+      const res = await apiFetch(url);
+      if (!res.ok) return;
+      const blob = await res.blob();
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = month ? `training-plan-${id}-${month}.zip` : `training-plan-${id}.zip`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch { /* ignore */ }
+  }, [id]);
+
+  const handleIntervalsPush = useCallback(async (month?: string) => {
+    setShowExportMenu(false);
+    setIntervalsPushing(true);
+    setIntervalsPushResult("Starting…");
+    const url = month ? `/plans/${id}/intervals-push?month=${month}` : `/plans/${id}/intervals-push`;
+    try {
+      const res = await apiFetch(url, { method: "POST" });
+      if (!res.ok || !res.body) {
+        const data = await res.json().catch(() => ({}));
+        const msg = data.detail ?? String(res.status);
+        if (/invalid|expired|reconnect|401|403/i.test(msg)) { setIntervalsPushResult(""); setIntervalsPushing(false); setIntervalsReconnect(true); setShowIntervalsModal(true); return; }
+        setIntervalsPushResult(`Push failed: ${msg}`);
+        return;
+      }
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split("\n");
+        buf = lines.pop() ?? "";
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const evt = JSON.parse(line.slice(6));
+            if (evt.type === "error" && /invalid|expired|reconnect|401|403/i.test(evt.message ?? "")) {
+              setIntervalsPushResult(""); setIntervalsPushing(false); setIntervalsReconnect(true); setShowIntervalsModal(true); return;
+            }
+            if (evt.message) setIntervalsPushResult(evt.message);
+            if (evt.type === "done" || evt.type === "error") setIntervalsPushing(false);
+          } catch { /* ignore malformed */ }
+        }
+      }
+    } catch {
+      setIntervalsPushResult("Push failed: network error");
+      setIntervalsPushing(false);
     }
   }, [id]);
 
@@ -776,23 +843,86 @@ export default function PlanDetailPage() {
                       )}
                     </div>
 
-                    {/* ── Google Calendar ── */}
+                    {/* ── Intervals.icu ── */}
                     <div className="relative">
                       <button
-                        onClick={() => setExportSubmenu(exportSubmenu === "gcal" ? null : "gcal")}
+                        onClick={() => setExportSubmenu(exportSubmenu === "intervals" ? null : "intervals")}
                         className="w-full text-left px-4 py-2 hover:bg-gray-50 text-gray-800 flex items-center justify-between"
                       >
-                        <span>Google Calendar</span>
+                        <span className="flex items-center gap-2">
+                          Intervals.icu
+                          {intervalsStatus?.connected && <span className="text-[10px] text-green-500 font-medium">connected</span>}
+                        </span>
                         <span className="text-gray-400 text-xs">›</span>
                       </button>
-                      {exportSubmenu === "gcal" && (
-                        <div className="absolute left-0 top-full mt-1 w-48 bg-white border border-gray-200 rounded-xl shadow-lg py-1 text-sm z-20">
+                      {exportSubmenu === "intervals" && (
+                        <div className="absolute left-0 top-full mt-1 w-52 bg-white border border-gray-200 rounded-xl shadow-lg py-1 text-sm z-20">
+                          {intervalsStatus?.connected ? (
+                            <>
+                              <button
+                                onClick={() => { setExportSubmenu(null); handleIntervalsPush(); }}
+                                disabled={intervalsPushing}
+                                className="w-full text-left px-4 py-2 hover:bg-gray-50 text-gray-800 disabled:text-gray-300"
+                              >
+                                {intervalsPushing ? "Pushing…" : "Whole plan"}
+                              </button>
+                              {exportMonths.map(m => (
+                                <button
+                                  key={m}
+                                  onClick={() => { setExportSubmenu(null); handleIntervalsPush(m); }}
+                                  disabled={intervalsPushing}
+                                  className="w-full text-left px-4 py-2 hover:bg-gray-50 text-gray-800 disabled:text-gray-300"
+                                >
+                                  {new Date(m + "-01").toLocaleString("default", { month: "long", year: "numeric" })}
+                                </button>
+                              ))}
+                              <div className="border-t border-gray-100 mt-1 pt-1">
+                                <button
+                                  onClick={() => { setShowExportMenu(false); setExportSubmenu(null); apiFetch("/intervals/auth", { method: "DELETE" }).then(() => setIntervalsStatus({ connected: false })); }}
+                                  className="w-full text-left px-4 py-2 hover:bg-gray-50 text-red-400 text-xs"
+                                >
+                                  Disconnect Intervals.icu
+                                </button>
+                              </div>
+                            </>
+                          ) : (
+                            <button
+                              onClick={() => { setShowExportMenu(false); setExportSubmenu(null); setIntervalsReconnect(false); setShowIntervalsModal(true); }}
+                              className="w-full text-left px-4 py-2 hover:bg-gray-50 text-blue-600"
+                            >
+                              Connect Intervals.icu…
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* ── Download .fit ── */}
+                    <div className="relative">
+                      <button
+                        onClick={() => setExportSubmenu(exportSubmenu === "fit" ? null : "fit")}
+                        className="w-full text-left px-4 py-2 hover:bg-gray-50 text-gray-800 flex items-center justify-between"
+                      >
+                        <span>Download .fit</span>
+                        <span className="text-gray-400 text-xs">›</span>
+                      </button>
+                      {exportSubmenu === "fit" && (
+                        <div className="absolute left-0 top-full mt-1 w-52 bg-white border border-gray-200 rounded-xl shadow-lg py-1 text-sm z-20">
                           <button
-                            onClick={() => { setShowExportMenu(false); setExportSubmenu(null); /* TODO: ICS export */ }}
+                            onClick={() => { setShowExportMenu(false); setExportSubmenu(null); handleFitDownload(); }}
                             className="w-full text-left px-4 py-2 hover:bg-gray-50 text-gray-800"
                           >
-                            Download .ics
+                            Whole plan
                           </button>
+                          {exportMonths.map(m => (
+                            <button
+                              key={m}
+                              onClick={() => { setShowExportMenu(false); setExportSubmenu(null); handleFitDownload(m); }}
+                              className="w-full text-left px-4 py-2 hover:bg-gray-50 text-gray-800"
+                            >
+                              {new Date(m + "-01").toLocaleString("default", { month: "long", year: "numeric" })}
+                            </button>
+                          ))}
                         </div>
                       )}
                     </div>
@@ -909,6 +1039,9 @@ export default function PlanDetailPage() {
               {garminPushResult && (
                 <p className="text-xs text-gray-500">{garminPushResult}</p>
               )}
+              {intervalsPushResult && (
+                <p className="text-xs text-gray-500">{intervalsPushResult}</p>
+              )}
               {activitySyncResult && (
                 <p className="text-xs text-teal-600">{activitySyncResult}</p>
               )}
@@ -935,6 +1068,19 @@ export default function PlanDetailPage() {
               setGarminStatus({ connected: true, display_name: name });
               setShowGarminModal(false);
               setGarminReconnect(false);
+            }}
+          />
+        )}
+
+        {/* Intervals.icu credentials modal */}
+        {showIntervalsModal && (
+          <IntervalsModal
+            reconnect={intervalsReconnect}
+            onClose={() => { setShowIntervalsModal(false); setIntervalsReconnect(false); }}
+            onConnected={(name) => {
+              setIntervalsStatus({ connected: true, athlete_name: name });
+              setShowIntervalsModal(false);
+              setIntervalsReconnect(false);
             }}
           />
         )}

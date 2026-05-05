@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Nav from "../components/Nav";
 import GarminModal from "../components/GarminModal";
+import IntervalsModal from "../components/IntervalsModal";
 import { apiFetch, useRequireAuth } from "../hooks/useAuth";
 
 export default function SettingsPage() {
@@ -15,6 +16,9 @@ export default function SettingsPage() {
   const [stravaStatus, setStravaStatus] = useState<{ connected: boolean; athlete_name?: string } | null>(null);
   const [garminStatus, setGarminStatus] = useState<{ connected: boolean; display_name?: string } | null>(null);
   const [showGarminModal, setShowGarminModal] = useState(false);
+
+  const [intervalsStatus, setIntervalsStatus] = useState<{ connected: boolean; athlete_name?: string } | null>(null);
+  const [showIntervalsModal, setShowIntervalsModal] = useState(false);
 
   useEffect(() => {
     apiFetch("/auth/me")
@@ -30,6 +34,11 @@ export default function SettingsPage() {
       .then(r => r.json())
       .then(setGarminStatus)
       .catch(() => setGarminStatus({ connected: false }));
+
+    apiFetch("/intervals/status")
+      .then(r => r.json())
+      .then(setIntervalsStatus)
+      .catch(() => setIntervalsStatus({ connected: false }));
   }, []);
 
   const saveMaxHr = async () => {
@@ -69,6 +78,11 @@ export default function SettingsPage() {
     setGarminStatus({ connected: false });
   };
 
+  const handleIntervalsDisconnect = async () => {
+    await apiFetch("/intervals/auth", { method: "DELETE" });
+    setIntervalsStatus({ connected: false });
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       <Nav />
@@ -78,6 +92,15 @@ export default function SettingsPage() {
           onConnected={displayName => {
             setGarminStatus({ connected: true, display_name: displayName });
             setShowGarminModal(false);
+          }}
+        />
+      )}
+      {showIntervalsModal && (
+        <IntervalsModal
+          onClose={() => setShowIntervalsModal(false)}
+          onConnected={athleteName => {
+            setIntervalsStatus({ connected: true, athlete_name: athleteName });
+            setShowIntervalsModal(false);
           }}
         />
       )}
@@ -176,6 +199,42 @@ export default function SettingsPage() {
                 className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-1.5 rounded-lg transition-colors"
               >
                 Connect Garmin
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Intervals.icu */}
+        <div className="bg-white rounded-2xl border border-gray-200 p-6">
+          <h2 className="text-sm font-semibold text-gray-700 mb-4">Intervals.icu</h2>
+          {intervalsStatus === null ? (
+            <p className="text-sm text-gray-400">Loading…</p>
+          ) : intervalsStatus.connected ? (
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-800">
+                  Connected{intervalsStatus.athlete_name ? ` as ${intervalsStatus.athlete_name}` : ""}
+                </p>
+                <span className="inline-block mt-1 text-xs text-green-600 bg-green-50 px-2 py-0.5 rounded-full">Connected</span>
+              </div>
+              <button
+                onClick={handleIntervalsDisconnect}
+                className="text-sm text-red-400 hover:text-red-600 transition-colors"
+              >
+                Disconnect
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-500">Not connected</p>
+                <span className="inline-block mt-1 text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">Disconnected</span>
+              </div>
+              <button
+                onClick={() => setShowIntervalsModal(true)}
+                className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-1.5 rounded-lg transition-colors"
+              >
+                Connect Intervals.icu
               </button>
             </div>
           )}
