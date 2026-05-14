@@ -478,6 +478,58 @@ def sync_plan_activities(plan_id: int, user_id: int, db: Session) -> dict:
 
 # ── Rescore ───────────────────────────────────────────────────────────────────
 
+def rescore_single_activity(activity_id: int, user_id: int, db: Session) -> tuple[int, str]:
+    """Re-score a single activity using stored data. Returns (score, comment)."""
+    from models.models import User
+
+    wa = db.query(WorkoutActivity).filter(WorkoutActivity.id == activity_id).first()
+    if not wa or not wa.workout_id:
+        raise ValueError("Activity not found or not matched to a workout")
+
+    workout = db.query(PlannedWorkout).filter(PlannedWorkout.id == wa.workout_id).first()
+    if not workout:
+        raise ValueError("Matched workout not found")
+
+    user = db.query(User).filter(User.id == user_id).first()
+    max_hr = user.max_hr if user else None
+
+    hr_zones = None
+    if wa.streams_data:
+        if "heartrate" in wa.streams_data and max_hr:
+            hr_zones = compute_hr_zones(wa.streams_data["heartrate"], max_hr)
+        elif "hr_zones" in wa.streams_data:
+            hr_zones = wa.streams_data["hr_zones"]
+
+    actual_pace = (
+        round(1000 / (wa.average_speed_ms * 60), 2)
+        if wa.average_speed_ms and wa.average_speed_ms > 0
+        else None
+    )
+
+    from services.claude import generate_match_analysis
+    score, comment = generate_match_analysis(
+        workout_type=workout.workout_type,
+        description=workout.description or "",
+        target_distance_km=workout.target_distance_km,
+        target_duration_min=workout.target_duration_minutes,
+        actual_distance_km=wa.actual_distance_km,
+        actual_duration_sec=wa.actual_duration_sec,
+        actual_pace_min_per_km=actual_pace,
+        average_hr=wa.average_hr,
+        hr_zones=hr_zones,
+        elevation_gain=wa.streams_data.get("elevation_gain") if wa.streams_data else None,
+        elevation_loss=wa.streams_data.get("elevation_loss") if wa.streams_data else None,
+        laps=wa.streams_data.get("laps") if wa.streams_data else None,
+        planned_steps=workout.steps,
+        distance_label=workout.distance_label,
+    )
+
+    wa.match_score = score
+    wa.match_comment = comment
+    db.commit()
+    return score, comment
+
+
 def rescore_plan_activities(plan_id: int, user_id: int, db: Session) -> int:
     """Re-score all matched activities for a plan using stored data (no Strava re-fetch).
     Returns the number of activities rescored."""

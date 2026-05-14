@@ -407,6 +407,33 @@ def rescore_plan(plan_id: int, db: Session = Depends(get_db), current_user: User
     return {"rescored": count}
 
 
+@router.post("/{plan_id}/activities/{strava_id}/rescore")
+def rescore_activity(
+    plan_id: int,
+    strava_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    plan = db.query(TrainingPlan).filter(TrainingPlan.id == plan_id).first()
+    if not plan:
+        raise HTTPException(status_code=404, detail="Plan not found")
+    if not _is_authorized(plan, current_user):
+        raise HTTPException(status_code=403, detail="Not authorized")
+    wa = (
+        db.query(WorkoutActivity)
+        .filter(WorkoutActivity.strava_activity_id == strava_id, WorkoutActivity.plan_id == plan_id)
+        .first()
+    )
+    if not wa:
+        raise HTTPException(status_code=404, detail="Activity not found")
+    from services.strava import rescore_single_activity
+    try:
+        score, comment = rescore_single_activity(wa.id, current_user.id, db)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return {"score": score, "comment": comment}
+
+
 @router.delete("/{plan_id}", status_code=204)
 def delete_plan(plan_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     plan = db.query(TrainingPlan).filter(TrainingPlan.id == plan_id).first()

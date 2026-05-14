@@ -467,6 +467,23 @@ export default function PlanDetailPage() {
     if (planRes.ok) setPlan(await planRes.json());
   }, [id]);
 
+  const [rescoringId, setRescoringId] = useState<string | null>(null);
+  const handleRescoreActivity = useCallback(async (activityId: string) => {
+    setRescoringId(activityId);
+    const res = await apiFetch(`/plans/${id}/activities/${activityId}/rescore`, { method: "POST" });
+    setRescoringId(null);
+    if (!res.ok) return;
+    const { score, comment } = await res.json();
+    setPlan(prev => prev ? {
+      ...prev,
+      workouts: prev.workouts.map(w =>
+        w.activity?.strava_activity_id === activityId
+          ? { ...w, activity: { ...w.activity!, match_score: score, match_comment: comment } }
+          : w
+      ),
+    } : prev);
+  }, [id]);
+
   const handleToggleCompleted = useCallback(async (workoutId: number) => {
     const res = await apiFetch(`/workouts/${workoutId}/toggle-completed`, { method: "PATCH" });
     if (!res.ok) return;
@@ -1515,13 +1532,23 @@ export default function PlanDetailPage() {
                       </div>
                     )}
                     {w.activity && (
-                      <button
-                        onClick={() => handleIgnoreActivity(w.activity!.strava_activity_id)}
-                        className="text-[11px] text-gray-300 hover:text-gray-500 transition-colors"
-                        title="Discard this activity and don't pull it again"
-                      >
-                        ignore
-                      </button>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleRescoreActivity(w.activity!.strava_activity_id)}
+                          disabled={rescoringId === w.activity.strava_activity_id}
+                          className="text-[11px] text-gray-300 hover:text-blue-500 disabled:text-blue-300 transition-colors"
+                          title="Re-analyze this activity with AI"
+                        >
+                          {rescoringId === w.activity.strava_activity_id ? "rescoring…" : "rescore"}
+                        </button>
+                        <button
+                          onClick={() => handleIgnoreActivity(w.activity!.strava_activity_id)}
+                          className="text-[11px] text-gray-300 hover:text-gray-500 transition-colors"
+                          title="Discard this activity and don't pull it again"
+                        >
+                          ignore
+                        </button>
+                      </div>
                     )}
                   </div>
                   {w.workout_type !== "rest" && (
