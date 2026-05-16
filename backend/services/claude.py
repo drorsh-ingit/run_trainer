@@ -1050,6 +1050,8 @@ Actual activity:
         )
     except anthropic.APIError as e:
         logger.error("Match analysis API error: %s", e)
+        if "credit balance" in str(e).lower():
+            raise AIServiceError("Anthropic API credits depleted. Add credits at console.anthropic.com to enable AI scoring.", 402) from e
         raise AIServiceError("Could not analyze workout match. Please try again.", 502) from e
 
     try:

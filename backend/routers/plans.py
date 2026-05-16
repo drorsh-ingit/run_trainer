@@ -427,10 +427,13 @@ def rescore_activity(
     if not wa:
         raise HTTPException(status_code=404, detail="Activity not found")
     from services.strava import rescore_single_activity
+    from services.claude import AIServiceError
     try:
         score, comment = rescore_single_activity(wa.id, current_user.id, db)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    except AIServiceError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.message)
     return {"score": score, "comment": comment}
 
 

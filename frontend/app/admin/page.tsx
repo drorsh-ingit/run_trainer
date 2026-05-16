@@ -21,6 +21,11 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  const [resetUser, setResetUser] = useState("");
+  const [resetPass, setResetPass] = useState("");
+  const [resetMsg, setResetMsg] = useState("");
+  const [resetting, setResetting] = useState(false);
+
   useEffect(() => {
     apiFetch("/admin/plans")
       .then(async res => {
@@ -89,6 +94,63 @@ export default function AdminPage() {
             </table>
           </div>
         )}
+
+        {/* Reset Password */}
+        <div className="bg-white rounded-2xl border border-gray-200 p-6 mt-8">
+          <h2 className="text-sm font-semibold text-gray-700 mb-4">Reset Password</h2>
+          <form
+            onSubmit={async (e) => {
+              e.preventDefault();
+              setResetting(true);
+              setResetMsg("");
+              try {
+                const res = await apiFetch("/admin/reset-password", {
+                  method: "POST",
+                  body: JSON.stringify({ username: resetUser, new_password: resetPass }),
+                });
+                const data = await res.json();
+                if (!res.ok) { setResetMsg(data.detail ?? "Failed"); return; }
+                setResetMsg(`Password reset for ${data.username}`);
+                setResetUser("");
+                setResetPass("");
+              } catch {
+                setResetMsg("Network error");
+              } finally {
+                setResetting(false);
+              }
+            }}
+            className="flex items-end gap-3"
+          >
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">Username</label>
+              <input
+                type="text"
+                value={resetUser}
+                onChange={e => setResetUser(e.target.value)}
+                required
+                className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm w-40 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">New password</label>
+              <input
+                type="text"
+                value={resetPass}
+                onChange={e => setResetPass(e.target.value)}
+                required
+                className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm w-48 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={resetting}
+              className="bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-sm font-medium px-4 py-1.5 rounded-lg transition-colors"
+            >
+              {resetting ? "Resetting…" : "Reset"}
+            </button>
+            {resetMsg && <span className="text-sm text-gray-600">{resetMsg}</span>}
+          </form>
+        </div>
       </div>
     </div>
   );

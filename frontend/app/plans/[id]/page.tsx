@@ -468,11 +468,21 @@ export default function PlanDetailPage() {
   }, [id]);
 
   const [rescoringId, setRescoringId] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 4000);
+    return () => clearTimeout(t);
+  }, [toast]);
   const handleRescoreActivity = useCallback(async (activityId: string) => {
     setRescoringId(activityId);
     const res = await apiFetch(`/plans/${id}/activities/${activityId}/rescore`, { method: "POST" });
     setRescoringId(null);
-    if (!res.ok) return;
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      setToast(d.detail ?? "Rescore failed");
+      return;
+    }
     const { score, comment } = await res.json();
     setPlan(prev => prev ? {
       ...prev,
@@ -1673,6 +1683,11 @@ export default function PlanDetailPage() {
         </div>
 
       </div>
+      {toast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-sm px-5 py-3 rounded-xl shadow-lg z-50">
+          {toast}
+        </div>
+      )}
     </div>
   );
 }
