@@ -874,9 +874,10 @@ Rules:
 - Recovery between intervals: duration_type=TIME, target_type=OPEN, target_low=null, target_high=null
 - Warmup/cooldown: ONLY add them for workouts with meaningful intensity variation (tempo, intervals,
   hill repeats, fartlek, strides). For easy and long runs at uniform effort, use a SINGLE active step — no warmup or cooldown.
-- When warmup/cooldown ARE included: target_type=HEART_RATE_ZONE, target_low=1, target_high=2.
-  Use duration_type=DISTANCE (meters). Warmup distance = the easy portion distance from the description.
-  Cooldown distance = remaining distance or ~1km if not specified.
+- When warmup/cooldown ARE included: target_type=HEART_RATE_ZONE. Use the HR zone from the description
+  (e.g. "HR zone 2" → target_low=2, target_high=2). Only default to target_low=1, target_high=2 if
+  no zone is specified. Use duration_type=DISTANCE (meters). Warmup distance = the easy portion distance
+  from the description. Cooldown distance = remaining distance or ~1km if not specified.
 - DISTANCE vs TIME preference: ALWAYS prefer duration_type=DISTANCE for warmup, cooldown, easy runs,
   and long runs. Use the distances from the description (km × 1000 = meters). Only use TIME for
   short intervals (strides, repeats) and recovery/rest steps.
