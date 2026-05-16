@@ -118,7 +118,8 @@ def _ensure_steps(workouts: list, db: Session):
     for i in range(0, len(missing), BATCH):
         batch = missing[i:i + BATCH]
         batch_input = [{"id": w.id, "type": w.workout_type, "description": w.description,
-                         "duration_minutes": w.target_duration_minutes, "distance_km": w.target_distance_km}
+                         "duration_minutes": w.target_duration_minutes, "distance_km": w.target_distance_km,
+                         "distance_label": w.distance_label}
                         for w in batch]
         try:
             steps_map = generate_steps_for_workouts(batch_input)

@@ -873,14 +873,18 @@ Rules:
 - Active steps for easy/long runs: duration_type=DISTANCE (meters, use distance_km * 1000), target_type=HEART_RATE_ZONE (use the HR zone from the description, target_low=zone number 1-5)
 - Recovery between intervals: duration_type=TIME, target_type=OPEN, target_low=null, target_high=null
 - Warmup/cooldown: ONLY add them for workouts with meaningful intensity variation (tempo, intervals,
-  hill repeats, fartlek). For easy and long runs at uniform effort, use a SINGLE active step for
-  the full duration — no warmup or cooldown.
+  hill repeats, fartlek, strides). For easy and long runs at uniform effort, use a SINGLE active step — no warmup or cooldown.
 - When warmup/cooldown ARE included: target_type=HEART_RATE_ZONE, target_low=1, target_high=2.
-  Use duration_type=DISTANCE (meters) if the description specifies a warmup/cooldown distance (e.g. "2 km warmup" → 2000m).
-  Use duration_type=TIME (seconds) if only time is specified or implied.
-- CRITICAL: all step duration_values (in seconds) must sum exactly to duration_minutes * 60.
-  For single-step workouts: one active step with duration_value = duration_minutes * 60.
-  For multi-step: warmup ~5-10% + active (remainder) + cooldown ~5-10%.
+  Use duration_type=DISTANCE (meters). Warmup distance = the easy portion distance from the description.
+  Cooldown distance = remaining distance or ~1km if not specified.
+- DISTANCE vs TIME preference: ALWAYS prefer duration_type=DISTANCE for warmup, cooldown, easy runs,
+  and long runs. Use the distances from the description (km × 1000 = meters). Only use TIME for
+  short intervals (strides, repeats) and recovery/rest steps.
+- For strides workouts (e.g. "8km easy + 8×20s strides"): warmup step = DISTANCE (the easy km portion),
+  then alternate active TIME steps (stride duration) and rest TIME steps (recovery), no cooldown needed
+  unless the description explicitly mentions one.
+- TIME step duration_values (in seconds) for recovery/intervals should match the description.
+  DISTANCE step duration_values are in meters and do NOT need to sum to duration_minutes × 60.
 """
 
 

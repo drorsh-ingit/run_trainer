@@ -81,6 +81,7 @@ def intervals_disconnect(
 def intervals_push(
     plan_id: int,
     month: str | None = None,
+    regenerate: bool = False,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -108,6 +109,13 @@ def intervals_push(
         workouts = _load_workouts(db, plan_id, month)
         total = len(workouts)
         yield _sse({"type": "status", "message": f"Preparing {total} workout(s)…"})
+
+        if regenerate:
+            for w in workouts:
+                if w.workout_type not in ("rest", "cross_training"):
+                    w.steps = None
+            db.commit()
+            yield _sse({"type": "status", "message": "Cleared existing steps — regenerating…"})
 
         missing = [w for w in workouts if not w.steps and w.workout_type not in ("rest", "cross_training")]
         if missing:

@@ -333,11 +333,15 @@ export default function PlanDetailPage() {
     } catch { /* ignore */ }
   }, [id]);
 
-  const handleIntervalsPush = useCallback(async (month?: string) => {
+  const handleIntervalsPush = useCallback(async (month?: string, regenerate?: boolean) => {
     setShowExportMenu(false);
     setIntervalsPushing(true);
     setIntervalsPushResult("Starting…");
-    const url = month ? `/plans/${id}/intervals-push?month=${month}` : `/plans/${id}/intervals-push`;
+    const params = new URLSearchParams();
+    if (month) params.set("month", month);
+    if (regenerate) params.set("regenerate", "true");
+    const qs = params.toString();
+    const url = `/plans/${id}/intervals-push${qs ? `?${qs}` : ""}`;
     try {
       const res = await apiFetch(url, { method: "POST" });
       if (!res.ok || !res.body) {
@@ -903,6 +907,15 @@ export default function PlanDetailPage() {
                                   {new Date(m + "-01").toLocaleString("default", { month: "long", year: "numeric" })}
                                 </button>
                               ))}
+                              <div className="border-t border-gray-100 mt-1 pt-1">
+                                <button
+                                  onClick={() => { setExportSubmenu(null); handleIntervalsPush(undefined, true); }}
+                                  disabled={intervalsPushing}
+                                  className="w-full text-left px-4 py-2 hover:bg-gray-50 text-amber-600 text-xs disabled:text-gray-300"
+                                >
+                                  Regenerate steps & push
+                                </button>
+                              </div>
                               <div className="border-t border-gray-100 mt-1 pt-1">
                                 <button
                                   onClick={() => { setShowExportMenu(false); setExportSubmenu(null); apiFetch("/intervals/auth", { method: "DELETE" }).then(() => setIntervalsStatus({ connected: false })); }}
