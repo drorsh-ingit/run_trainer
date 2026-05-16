@@ -15,9 +15,12 @@ type AdminPlan = {
   created_at: string;
 };
 
+type AdminUser = { id: number; username: string };
+
 export default function AdminPage() {
   useRequireAuth();
   const [plans, setPlans] = useState<AdminPlan[]>([]);
+  const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -27,13 +30,18 @@ export default function AdminPage() {
   const [resetting, setResetting] = useState(false);
 
   useEffect(() => {
-    apiFetch("/admin/plans")
-      .then(async res => {
+    Promise.all([
+      apiFetch("/admin/plans").then(async res => {
         if (res.status === 403) throw new Error("Admin access required");
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.json();
-      })
-      .then(setPlans)
+      }),
+      apiFetch("/admin/users").then(async res => {
+        if (!res.ok) return [];
+        return res.json();
+      }),
+    ])
+      .then(([p, u]) => { setPlans(p); setUsers(u); })
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
   }, []);
@@ -122,14 +130,18 @@ export default function AdminPage() {
             className="flex items-end gap-3"
           >
             <div>
-              <label className="text-xs text-gray-500 block mb-1">Username</label>
-              <input
-                type="text"
+              <label className="text-xs text-gray-500 block mb-1">User</label>
+              <select
                 value={resetUser}
                 onChange={e => setResetUser(e.target.value)}
                 required
-                className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm w-40 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
+                className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm w-48 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              >
+                <option value="">Select user…</option>
+                {users.map(u => (
+                  <option key={u.id} value={u.username}>{u.username}</option>
+                ))}
+              </select>
             </div>
             <div>
               <label className="text-xs text-gray-500 block mb-1">New password</label>

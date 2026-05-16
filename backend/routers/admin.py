@@ -36,6 +36,17 @@ def admin_list_plans(
     ]
 
 
+@router.get("/users")
+def admin_list_users(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if current_user.username != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    users = db.query(User).order_by(User.id).all()
+    return [{"id": u.id, "username": u.username} for u in users]
+
+
 class ResetPasswordRequest(BaseModel):
     username: str
     new_password: str
