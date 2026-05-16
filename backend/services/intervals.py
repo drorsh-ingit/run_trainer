@@ -23,7 +23,10 @@ def validate_intervals_key(api_key: str) -> tuple[str, str]:
 def _format_duration(duration_type: str, duration_value: int) -> str:
     if duration_type == "DISTANCE":
         m = duration_value
-        return f"{m // 1000}km" if m >= 1000 and m % 1000 == 0 else f"{m}mtr"
+        if m >= 1000:
+            km = m / 1000
+            return f"{km:g}km"
+        return f"{m}mtr"
     secs = duration_value
     if secs >= 60 and secs % 60 == 0:
         return f"{secs // 60}m"
