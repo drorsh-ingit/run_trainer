@@ -891,7 +891,7 @@ export default function PlanDetailPage() {
                           {intervalsStatus?.connected ? (
                             <>
                               <button
-                                onClick={() => { setExportSubmenu(null); handleIntervalsPush(); }}
+                                onClick={() => { setExportSubmenu(null); handleIntervalsPush(undefined, true); }}
                                 disabled={intervalsPushing}
                                 className="w-full text-left px-4 py-2 hover:bg-gray-50 text-gray-800 disabled:text-gray-300"
                               >
@@ -900,26 +900,13 @@ export default function PlanDetailPage() {
                               {exportMonths.map(m => (
                                 <button
                                   key={m}
-                                  onClick={() => { setExportSubmenu(null); handleIntervalsPush(m); }}
+                                  onClick={() => { setExportSubmenu(null); handleIntervalsPush(m, true); }}
                                   disabled={intervalsPushing}
                                   className="w-full text-left px-4 py-2 hover:bg-gray-50 text-gray-800 disabled:text-gray-300"
                                 >
                                   {new Date(m + "-01").toLocaleString("default", { month: "long", year: "numeric" })}
                                 </button>
                               ))}
-                              <div className="border-t border-gray-100 mt-1 pt-1">
-                                <p className="px-4 py-1 text-[10px] text-gray-400">Regenerate steps & push</p>
-                                {exportMonths.map(m => (
-                                  <button
-                                    key={`regen-${m}`}
-                                    onClick={() => { setExportSubmenu(null); handleIntervalsPush(m, true); }}
-                                    disabled={intervalsPushing}
-                                    className="w-full text-left px-4 py-1.5 hover:bg-gray-50 text-amber-600 text-xs disabled:text-gray-300"
-                                  >
-                                    {new Date(m + "-01").toLocaleString("default", { month: "long", year: "numeric" })}
-                                  </button>
-                                ))}
-                              </div>
                               <div className="border-t border-gray-100 mt-1 pt-1">
                                 <button
                                   onClick={() => { setShowExportMenu(false); setExportSubmenu(null); apiFetch("/intervals/auth", { method: "DELETE" }).then(() => setIntervalsStatus({ connected: false })); }}
