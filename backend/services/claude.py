@@ -870,10 +870,18 @@ Rules:
 - Flatten repeats (e.g. "8 × 1 km"): N active + (N-1) recovery steps interleaved, no nesting
 - Active intervals at distance: duration_type=DISTANCE (meters), target_type=PACE (sec/km, e.g. 4:20=260)
 - Active steps at time for structured workouts (tempo, intervals, hill_repeats, fartlek, strides): target_type=PACE
-- Active steps for easy/long runs: duration_type=DISTANCE (meters, use distance_km * 1000), target_type=HEART_RATE_ZONE (use the HR zone from the description, target_low=zone number 1-5)
+- Active steps for easy/long runs at UNIFORM effort throughout: duration_type=DISTANCE (meters, use distance_km * 1000), target_type=HEART_RATE_ZONE (use the HR zone from the description, target_low=zone number 1-5). Use a SINGLE active step — no warmup or cooldown.
+- IMPORTANT: Read the description carefully. If an easy or long run description includes pace/effort
+  changes (e.g. "3km at marathon pace", "strides at end", "tempo section"), it has meaningful
+  intensity variation — produce multiple steps matching the described structure. Examples:
+    • "22km long run with middle 3km at marathon pace (4:40-4:50/km)" → active 9.5km Z2 HR + active 3km Pace + active 7.5km Z2 HR + cooldown 2km Z2 HR
+    • "9km easy + 4×20s strides" → active 9km Z2 HR + 4×(active 20s Pace + rest 40s) interleaved
+  The workout type label (easy, long_run) does NOT override the description — always follow what
+  the description says.
 - Recovery between intervals: duration_type=TIME, target_type=OPEN, target_low=null, target_high=null
 - Warmup/cooldown: ONLY add them for workouts with meaningful intensity variation (tempo, intervals,
-  hill repeats, fartlek, strides). For easy and long runs at uniform effort, use a SINGLE active step — no warmup or cooldown.
+  hill repeats, fartlek, strides, or easy/long runs with pace changes in the description).
+  For easy and long runs at truly uniform effort, use a SINGLE active step — no warmup or cooldown.
 - When warmup/cooldown ARE included: target_type=HEART_RATE_ZONE. Use the HR zone from the description
   (e.g. "HR zone 2" → target_low=2, target_high=2). Only default to target_low=1, target_high=2 if
   no zone is specified. Use duration_type=DISTANCE (meters). Warmup distance = the easy portion distance
@@ -881,9 +889,9 @@ Rules:
 - DISTANCE vs TIME preference: ALWAYS prefer duration_type=DISTANCE for warmup, cooldown, easy runs,
   and long runs. Use the distances from the description (km × 1000 = meters). Only use TIME for
   short intervals (strides, repeats) and recovery/rest steps.
-- For strides workouts (e.g. "8km easy + 8×20s strides"): warmup step = DISTANCE (the easy km portion),
-  then alternate active TIME steps (stride duration) and rest TIME steps (recovery), no cooldown needed
-  unless the description explicitly mentions one.
+- For workouts with strides (ANY type, e.g. "8km easy + 8×20s strides"): the easy portion = DISTANCE
+  active step, then alternate active TIME steps (stride duration) and rest TIME steps (recovery),
+  no cooldown needed unless the description explicitly mentions one.
 - TIME step duration_values (in seconds) for recovery/intervals should match the description.
   DISTANCE step duration_values are in meters and do NOT need to sum to duration_minutes × 60.
 """
