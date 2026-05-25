@@ -399,12 +399,13 @@ def chat_plan_revision(
     weeks = len(existing_plan.get("weeks", []))
     max_tokens = min(max(weeks * 1800, 16000), 32000)
 
-    raw_text = _extract_json(_call_model(model, CHAT_SYSTEM_PROMPT + "\n\n" + plan_context, messages, max_tokens))
+    full_response = _call_model(model, CHAT_SYSTEM_PROMPT + "\n\n" + plan_context, messages, max_tokens)
+    raw_text = _extract_json(full_response)
 
     try:
         data = json.loads(raw_text)
-    except json.JSONDecodeError as e:
-        raise ValueError(f"Claude returned invalid JSON: {e}\nRaw: {raw_text[:500]}")
+    except json.JSONDecodeError:
+        data = {"type": "question", "message": full_response.strip()}
 
     if data.get("type") == "plan":
         data["plan"] = ClaudePlanResponse.model_validate(data["plan"])
