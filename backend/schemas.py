@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 DEFAULT_MODEL = "claude-sonnet-4-6"
 ALLOWED_MODELS = {
-    "claude-opus-4-6",
+    "claude-opus-5",
     "claude-sonnet-4-6",
     "claude-haiku-4-5-20251001",
     "gpt-4o",

@@ -11,7 +11,7 @@ const GRADUALNESS = ["conservative", "moderate", "aggressive"];
 const GENDERS = ["", "male", "female", "other"];
 
 const AI_MODELS = [
-  { value: "claude-opus-4-6",           label: "Claude Opus 4.6",   badge: "Most capable",  provider: "Anthropic" },
+  { value: "claude-opus-5",              label: "Claude Opus 5",     badge: "Most capable",  provider: "Anthropic" },
   { value: "claude-sonnet-4-6",         label: "Claude Sonnet 4.6", badge: "Balanced",       provider: "Anthropic" },
   { value: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5",  badge: "Fast & cheap",   provider: "Anthropic" },
   { value: "gpt-4o",                    label: "GPT-4o",            badge: "Most capable",   provider: "OpenAI"    },
