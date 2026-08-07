@@ -76,6 +76,19 @@ def _get_openai_client():
     return _openai_client
 
 
+def _text_from_anthropic_content(content) -> str:
+    """Join text from Anthropic content blocks, skipping non-text (e.g. thinking) blocks.
+
+    Newer models (Opus 5, other 4.6+) can return a leading thinking block. Older SDK
+    versions mis-parse it as TextBlock(text=None, type='thinking'), so filtering by a
+    block type of 'text' with a non-empty text field is robust across SDK versions.
+    """
+    return "".join(
+        b.text for b in content
+        if getattr(b, "type", None) == "text" and getattr(b, "text", None)
+    )
+
+
 def _call_model(model: str, system: str, messages: list[dict], max_tokens: int) -> str:
     """Unified call that routes to Anthropic or OpenAI based on the model name."""
     if model.startswith("gpt-"):
@@ -101,7 +114,14 @@ def _call_model(model: str, system: str, messages: list[dict], max_tokens: int) 
         except BadRequestError as e:
             logger.error("OpenAI bad request: %s", e)
             raise AIServiceError(f"AI request failed: {e}", 400) from e
-        return response.choices[0].message.content
+        content = response.choices[0].message.content
+        if not content:
+            logger.error(
+                "OpenAI returned no content (model=%s, finish_reason=%s)",
+                model, response.choices[0].finish_reason,
+            )
+            raise AIServiceError("The AI returned an empty response. Please try again.", 502)
+        return content
     else:
         client = _get_client()
         try:
@@ -130,7 +150,15 @@ def _call_model(model: str, system: str, messages: list[dict], max_tokens: int) 
         except anthropic.APIError as e:
             logger.error("Anthropic API error: %s", e)
             raise AIServiceError("AI service error. Please try again later.", 502) from e
-        return response.content[0].text
+        text = _text_from_anthropic_content(response.content)
+        if not text:
+            logger.error(
+                "Anthropic returned no text content (model=%s, stop_reason=%s, blocks=%s)",
+                model, response.stop_reason,
+                [getattr(b, "type", "?") for b in response.content],
+            )
+            raise AIServiceError("The AI returned an empty response. Please try again.", 502)
+        return text
 
 
 SYSTEM_PROMPT = """You are an expert running coach with certifications in exercise physiology and marathon coaching.
@@ -919,7 +947,7 @@ def generate_steps_for_workouts(workouts: list[dict]) -> dict[int, list[dict]]:
         logger.error("Steps generation API error: %s", e)
         raise AIServiceError("Could not generate workout steps. Please try again.", 502) from e
 
-    raw = _extract_json(response.content[0].text)
+    raw = _extract_json(_text_from_anthropic_content(response.content))
 
     try:
         data = json.loads(raw)
@@ -1069,7 +1097,7 @@ Actual activity:
         raise AIServiceError("Could not analyze workout match. Please try again.", 502) from e
 
     try:
-        data = json.loads(_extract_json(response.content[0].text))
+        data = json.loads(_extract_json(_text_from_anthropic_content(response.content)))
         return int(data["score"]), str(data["comment"])
     except Exception:
         return 75, f"Completed {actual_distance_km} km."
