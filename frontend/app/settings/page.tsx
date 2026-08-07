@@ -117,7 +117,7 @@ export default function SettingsPage() {
               value={maxHr}
               onChange={e => setMaxHr(e.target.value)}
               placeholder="e.g. 190"
-              className="w-28 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-28 border border-gray-300 rounded-lg px-3 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
             <span className="text-sm text-gray-400">bpm</span>
             <button

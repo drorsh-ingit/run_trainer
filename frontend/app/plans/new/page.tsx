@@ -392,7 +392,7 @@ export default function NewPlanPage() {
                     type="text"
                     value={form.goal_race_name}
                     onChange={e => setForm({ ...form, goal_race_name: e.target.value })}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     placeholder="e.g. Berlin Marathon"
                   />
                 </div>
@@ -406,7 +406,7 @@ export default function NewPlanPage() {
                       type="number" step="0.1" required
                       value={form.goal_distance_km}
                       onChange={e => setForm({ ...form, goal_distance_km: e.target.value })}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                   <div>
@@ -415,7 +415,7 @@ export default function NewPlanPage() {
                       type="date" required
                       value={form.goal_date}
                       onChange={e => setForm({ ...form, goal_date: e.target.value })}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                 </div>
@@ -427,7 +427,7 @@ export default function NewPlanPage() {
                       required
                       value={form.plan_duration_weeks}
                       onChange={e => setForm({ ...form, plan_duration_weeks: e.target.value })}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
                       {[4, 6, 8, 10, 12, 16, 20, 24].map(w => (
                         <option key={w} value={w}>{w} weeks</option>
@@ -443,7 +443,7 @@ export default function NewPlanPage() {
                   <select
                     value={form.gender}
                     onChange={e => setForm({ ...form, gender: e.target.value })}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="">Select…</option>
                     {GENDERS.filter(g => g).map(g => <option key={g} value={g}>{g}</option>)}
@@ -455,7 +455,7 @@ export default function NewPlanPage() {
                     type="number" step="1" min="10" max="100"
                     value={form.age}
                     onChange={e => setForm({ ...form, age: e.target.value })}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     placeholder="e.g. 35"
                   />
                 </div>
@@ -465,7 +465,7 @@ export default function NewPlanPage() {
                     type="number" step="1"
                     value={form.height_cm}
                     onChange={e => setForm({ ...form, height_cm: e.target.value })}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     placeholder="e.g. 175"
                   />
                 </div>
@@ -475,7 +475,7 @@ export default function NewPlanPage() {
                     type="number" step="0.1"
                     value={form.weight_kg}
                     onChange={e => setForm({ ...form, weight_kg: e.target.value })}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     placeholder="e.g. 70"
                   />
                 </div>
@@ -487,7 +487,7 @@ export default function NewPlanPage() {
                   required rows={3}
                   value={form.schedule_description}
                   onChange={e => setForm({ ...form, schedule_description: e.target.value })}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder='e.g. "4 runs/week, one optional, 3 weekday runs up to 1 hour, long run on Saturdays"'
                 />
               </div>
@@ -499,7 +499,7 @@ export default function NewPlanPage() {
                     type="number" step="1" required
                     value={form.current_weekly_km}
                     onChange={e => setForm({ ...form, current_weekly_km: e.target.value })}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
                 <div>
@@ -507,7 +507,7 @@ export default function NewPlanPage() {
                   <select
                     value={form.fitness_level}
                     onChange={e => setForm({ ...form, fitness_level: e.target.value })}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     {FITNESS_LEVELS.map(l => <option key={l}>{l}</option>)}
                   </select>
@@ -517,7 +517,7 @@ export default function NewPlanPage() {
                   <select
                     value={form.gradualness_preference}
                     onChange={e => setForm({ ...form, gradualness_preference: e.target.value })}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     {GRADUALNESS.map(g => <option key={g}>{g}</option>)}
                   </select>
@@ -531,7 +531,7 @@ export default function NewPlanPage() {
                     type="text"
                     value={form.goal_time}
                     onChange={e => setForm({ ...form, goal_time: e.target.value })}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     placeholder='e.g. "sub-4 hours", "3:30", "just finish"'
                   />
                 </div>
@@ -539,22 +539,22 @@ export default function NewPlanPage() {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Injuries / limitations</label>
-                <input
-                  type="text"
+                <textarea
+                  rows={3}
                   value={form.injuries}
                   onChange={e => setForm({ ...form, injuries: e.target.value })}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
                   placeholder="e.g. left knee pain, no high-impact for first 4 weeks"
                 />
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Additional notes</label>
-                <input
-                  type="text"
+                <textarea
+                  rows={3}
                   value={form.additional_notes}
                   onChange={e => setForm({ ...form, additional_notes: e.target.value })}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
                   placeholder="Anything else your coach should know"
                 />
               </div>
@@ -645,7 +645,7 @@ export default function NewPlanPage() {
                       onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleQaReply(e as unknown as React.FormEvent); } }}
                       disabled={qaLoading}
                       placeholder="Type your answer… (Shift+Enter for new line)"
-                      className="flex-1 border border-gray-300 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50 resize-none"
+                      className="flex-1 border border-gray-300 rounded-xl px-4 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50 resize-none"
                     />
                     <button
                       type="submit"
@@ -777,7 +777,7 @@ export default function NewPlanPage() {
                     onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleChatSend(e as unknown as React.FormEvent); } }}
                     disabled={chatLoading}
                     placeholder={'e.g. "Add more tempo runs"\n(Shift+Enter for new line)'}
-                    className="flex-1 border border-gray-300 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50 resize-none"
+                    className="flex-1 border border-gray-300 rounded-xl px-4 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50 resize-none"
                   />
                   <button
                     type="submit"

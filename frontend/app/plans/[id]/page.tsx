@@ -1380,7 +1380,7 @@ export default function PlanDetailPage() {
                       onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleAssessReply(e as unknown as React.FormEvent); } }}
                       disabled={assessLoading}
                       placeholder="Reply to your coach…"
-                      className="flex-1 border border-gray-300 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 disabled:bg-gray-50 resize-none"
+                      className="flex-1 border border-gray-300 rounded-xl px-4 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-amber-500 disabled:bg-gray-50 resize-none"
                     />
                     <button
                       type="submit"
@@ -1673,7 +1673,7 @@ export default function PlanDetailPage() {
                 onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(e as unknown as React.FormEvent); } }}
                 disabled={chatLoading}
                 placeholder={"e.g. I'll be travelling week 5, make it lighter\n(Shift+Enter for new line)"}
-                className="flex-1 border border-gray-300 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50 resize-none"
+                className="flex-1 border border-gray-300 rounded-xl px-4 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50 resize-none"
               />
               <button
                 type="submit"
