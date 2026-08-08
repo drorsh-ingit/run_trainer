@@ -1,4 +1,5 @@
 import json
+import logging
 import time
 import threading
 from datetime import date, timedelta
@@ -14,6 +15,8 @@ from schemas import AssessStartRequest, AssessReplyRequest, AssessApplyRequest
 from services.claude import generate_plan, chat_plan_revision, start_coaching_session, continue_coaching_chat, build_coached_plan, generate_steps_for_workouts
 from services.claude import assess_plan_chat, assess_build_plan, _build_comparison_context, AIServiceError
 from services.auth import get_current_user
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/plans", tags=["plans"])
 
@@ -304,10 +307,12 @@ def garmin_export(
 
     workouts = query.order_by(PlannedWorkout.week_number, PlannedWorkout.scheduled_date).all()
 
-    # Generate steps lazily for workouts that don't have them yet (batch by 20)
+    # Generate steps lazily for workouts that don't have them yet. Keep batches
+    # small so the steps JSON stays under the model token cap (see BATCH note in
+    # garmin._ensure_steps) — a truncated batch would otherwise lose all steps.
     missing = [w for w in workouts if not w.steps and w.workout_type not in ("rest", "cross_training")]
     if missing:
-        BATCH = 20
+        BATCH = 10
         for i in range(0, len(missing), BATCH):
             batch = missing[i:i + BATCH]
             batch_input = [
@@ -318,8 +323,8 @@ def garmin_export(
                 steps_map = generate_steps_for_workouts(batch_input)
                 for w in batch:
                     w.steps = steps_map.get(w.id, [])
-            except Exception:
-                pass  # export still works — just omits steps for this batch
+            except Exception:  # export still works — just omits steps for this batch
+                logger.exception("Step generation failed for export batch of %d workout(s)", len(batch))
         db.commit()
 
     result = []

@@ -926,6 +926,17 @@ Rules:
 """
 
 
+def _steps_max_tokens(num_workouts: int) -> int:
+    """Token budget for a steps batch.
+
+    Detailed interval/tempo workouts emit ~700 output tokens of steps JSON each;
+    budget 900/workout for headroom. Callers must keep batches small enough that
+    this stays under the 16000 cap (see BATCH in _ensure_steps), otherwise the
+    response truncates and the JSON can't be parsed.
+    """
+    return min(num_workouts * 900 + 1000, 16000)
+
+
 def generate_steps_for_workouts(workouts: list[dict]) -> dict[int, list[dict]]:
     """
     Generate Garmin steps for a batch of workouts.
@@ -939,13 +950,19 @@ def generate_steps_for_workouts(workouts: list[dict]) -> dict[int, list[dict]]:
     try:
         response = client.messages.create(
             model="claude-sonnet-4-6",
-            max_tokens=min(len(workouts) * 400 + 1000, 16000),
+            max_tokens=_steps_max_tokens(len(workouts)),
             system=STEPS_SYSTEM,
             messages=[{"role": "user", "content": batch_prompt}],
         )
     except anthropic.APIError as e:
         logger.error("Steps generation API error: %s", e)
         raise AIServiceError("Could not generate workout steps. Please try again.", 502) from e
+
+    # A truncated response yields unparseable JSON; fail loudly instead of
+    # returning nothing (which previously showed up as a silent "pushed 0").
+    if response.stop_reason == "max_tokens":
+        logger.error("Steps generation truncated (max_tokens) for %d workout(s)", len(workouts))
+        raise AIServiceError("Workout steps were too long to generate at once. Please try again.", 502)
 
     raw = _extract_json(_text_from_anthropic_content(response.content))
 

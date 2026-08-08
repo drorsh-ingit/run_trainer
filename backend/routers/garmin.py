@@ -1,4 +1,5 @@
 import json
+import logging
 from datetime import datetime, date as date_type
 from typing import Generator, List
 
@@ -22,6 +23,8 @@ from services.garmin import (
     push_workout_to_garmin,
     sync_plan_activities,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/garmin", tags=["garmin"])
 plans_router = APIRouter(prefix="/plans", tags=["garmin"])
@@ -114,7 +117,10 @@ def _ensure_steps(workouts: list, db: Session):
     missing = [w for w in workouts if not w.steps and w.workout_type not in ("rest", "cross_training")]
     if not missing:
         return
-    BATCH = 20
+    # Keep batches small so the steps JSON stays well under the model token cap
+    # (detailed workouts need ~700 output tokens each) — a truncated batch loses
+    # all its steps, so smaller batches also localize any failure.
+    BATCH = 10
     for i in range(0, len(missing), BATCH):
         batch = missing[i:i + BATCH]
         batch_input = [{"id": w.id, "type": w.workout_type, "description": w.description,
@@ -126,7 +132,7 @@ def _ensure_steps(workouts: list, db: Session):
             for w in batch:
                 w.steps = steps_map.get(w.id, [])
         except Exception:
-            pass
+            logger.exception("Step generation failed for batch of %d workout(s)", len(batch))
     db.commit()
 
 

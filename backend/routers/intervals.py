@@ -111,16 +111,34 @@ def intervals_push(
         yield _sse({"type": "status", "message": f"Preparing {total} workout(s)…"})
 
         if regenerate:
-            for w in workouts:
-                if w.workout_type not in ("rest", "cross_training"):
+            to_regen = [w for w in workouts if w.workout_type not in ("rest", "cross_training")]
+            if to_regen:
+                old_steps = {w.id: w.steps for w in to_regen}
+                for w in to_regen:
                     w.steps = None
-            db.commit()
-            yield _sse({"type": "status", "message": "Cleared existing steps — regenerating…"})
-
-        missing = [w for w in workouts if not w.steps and w.workout_type not in ("rest", "cross_training")]
-        if missing:
-            yield _sse({"type": "status", "message": f"Generating steps for {len(missing)} workout(s) via AI…"})
-            _ensure_steps(workouts, db)
+                db.commit()
+                yield _sse({"type": "status", "message": f"Regenerating steps for {len(to_regen)} workout(s) via AI…"})
+                _ensure_steps(workouts, db)
+                failed = [w for w in to_regen if not w.steps]
+                if failed:
+                    for w in failed:
+                        w.steps = old_steps[w.id]
+                    db.commit()
+                    if all(not w.steps for w in to_regen):
+                        yield _sse({"type": "error", "message": "Step generation failed — AI credits may be depleted. Kept existing steps."})
+                        return
+                    yield _sse({"type": "status", "message": f"Regenerated {len(to_regen) - len(failed)} of {len(to_regen)} — restored {len(failed)} that failed"})
+        else:
+            missing = [w for w in workouts if not w.steps and w.workout_type not in ("rest", "cross_training")]
+            if missing:
+                yield _sse({"type": "status", "message": f"Generating steps for {len(missing)} workout(s) via AI…"})
+                _ensure_steps(workouts, db)
+                still_missing = [w for w in missing if not w.steps]
+                if len(still_missing) == len(missing):
+                    yield _sse({"type": "error", "message": "Step generation failed — please try again in a moment."})
+                    return
+                if still_missing:
+                    yield _sse({"type": "status", "message": f"Generated {len(missing) - len(still_missing)} of {len(missing)} — {len(still_missing)} could not be generated"})
 
         dates_to_push = {str(w.scheduled_date) for w in workouts}
         yield _sse({"type": "status", "message": "Removing previously pushed workouts…"})
