@@ -3,6 +3,10 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  /* The app is light-only (no `dark:` variants anywhere). Pin the color scheme
+     so iOS Safari/Chrome don't apply their dark-mode form-control rendering,
+     which otherwise washes out input text on dark-mode phones. */
+  color-scheme: light;
 }
 
 @theme inline {
@@ -12,20 +16,16 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
 
+/* iOS applies its own -webkit-text-fill-color to form controls; mirror the
+   element's actual (dark) text color so typed text stays fully opaque.
+   NOTE: do not set `color: inherit` here — as an unlayered rule it would
+   override Tailwind's `text-*` utilities on inputs. */
 input, textarea, select {
   -webkit-text-fill-color: currentColor;
-  color: inherit;
 }
