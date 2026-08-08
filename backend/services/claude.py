@@ -125,12 +125,17 @@ def _call_model(model: str, system: str, messages: list[dict], max_tokens: int) 
     else:
         client = _get_client()
         try:
-            response = client.messages.create(
+            # Stream and reassemble: the SDK rejects non-streaming requests whose
+            # max_tokens could exceed the 10-min server timeout (plan generation
+            # uses up to 32k, and Opus-family models think by default). get_final_
+            # message() blocks until complete and returns the same Message shape.
+            with client.messages.stream(
                 model=model,
                 max_tokens=max_tokens,
                 system=system,
                 messages=messages,
-            )
+            ) as stream:
+                response = stream.get_final_message()
         except anthropic.AuthenticationError as e:
             logger.error("Anthropic auth error: %s", e)
             raise AIServiceError("AI service authentication failed. Please contact support.", 502) from e
