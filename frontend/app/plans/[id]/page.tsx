@@ -975,6 +975,26 @@ export default function PlanDetailPage() {
                 </button>
                 {showPullMenu && pullMenuPos && (
                   <div style={{ position: "fixed", top: pullMenuPos.top, left: pullMenuPos.left }} className="w-52 bg-white border border-gray-200 rounded-xl shadow-lg z-50 py-1 text-sm">
+                    {/* Garmin */}
+                    {garminStatus?.connected ? (
+                      <button
+                        onClick={handleActivitySync}
+                        disabled={activitySyncing}
+                        className="w-full text-left px-4 py-2 hover:bg-gray-50 text-gray-800 disabled:text-gray-300"
+                      >
+                        <span className="flex items-center justify-between">
+                          <span>{activitySyncing ? "Pulling…" : "Pull from Garmin"}</span>
+                          <span className="text-[10px] text-green-500 font-medium">connected</span>
+                        </span>
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => { setShowPullMenu(false); setGarminReconnect(false); setShowGarminModal(true); }}
+                        className="w-full text-left px-4 py-2 hover:bg-gray-50 text-teal-600"
+                      >
+                        Connect Garmin…
+                      </button>
+                    )}
                     {/* Strava */}
                     {stravaStatus?.connected ? (
                       <button
