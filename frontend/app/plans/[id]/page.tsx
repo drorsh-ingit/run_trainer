@@ -414,6 +414,31 @@ export default function PlanDetailPage() {
     }
   };
 
+  const handleIntervalsSync = async () => {
+    setActivitySyncing(true);
+    setActivitySyncResult("Pulling from Intervals.icu…");
+    try {
+      const res = await apiFetch(`/plans/${id}/intervals-sync`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) {
+        const msg = data.detail ?? "Pull failed";
+        if (/invalid|expired|reconnect|not connected|401|403/i.test(msg)) {
+          setActivitySyncResult(""); setActivitySyncing(false); setIntervalsReconnect(true); setShowIntervalsModal(true); return;
+        }
+        setActivitySyncResult(msg);
+        return;
+      }
+      const total = data.total ?? data.synced;
+      setActivitySyncResult(`Pulled ${total} activit${total !== 1 ? "ies" : "y"} from Intervals.icu (${data.synced} matched)`);
+      const planRes = await apiFetch(`/plans/${id}`);
+      if (planRes.ok) setPlan(await planRes.json());
+    } catch {
+      setActivitySyncResult("Pull failed: network error");
+    } finally {
+      setActivitySyncing(false);
+    }
+  };
+
   const handleStravaConnect = async () => {
     setShowPullMenu(false);
     const res = await apiFetch("/strava/auth-url");
@@ -993,6 +1018,26 @@ export default function PlanDetailPage() {
                         className="w-full text-left px-4 py-2 hover:bg-gray-50 text-teal-600"
                       >
                         Connect Garmin…
+                      </button>
+                    )}
+                    {/* Intervals.icu */}
+                    {intervalsStatus?.connected ? (
+                      <button
+                        onClick={handleIntervalsSync}
+                        disabled={activitySyncing}
+                        className="w-full text-left px-4 py-2 hover:bg-gray-50 text-gray-800 disabled:text-gray-300"
+                      >
+                        <span className="flex items-center justify-between">
+                          <span>{activitySyncing ? "Pulling…" : "Pull from Intervals.icu"}</span>
+                          <span className="text-[10px] text-green-500 font-medium">connected</span>
+                        </span>
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => { setShowPullMenu(false); setIntervalsReconnect(false); setShowIntervalsModal(true); }}
+                        className="w-full text-left px-4 py-2 hover:bg-gray-50 text-teal-600"
+                      >
+                        Connect Intervals.icu…
                       </button>
                     )}
                     {/* Strava */}

@@ -14,6 +14,7 @@ from services.intervals import (
     build_intervals_workout_text,
     delete_intervals_events_for_dates,
     push_workout_to_intervals,
+    sync_plan_activities,
     validate_intervals_key,
 )
 
@@ -75,6 +76,24 @@ def intervals_disconnect(
 ):
     db.query(IntervalsSession).filter(IntervalsSession.user_id == current_user.id).delete()
     db.commit()
+
+
+@plans_router.post("/{plan_id}/intervals-sync")
+def intervals_sync(
+    plan_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Pull completed Intervals.icu activities and match them to this plan's workouts."""
+    plan = db.query(TrainingPlan).filter(TrainingPlan.id == plan_id).first()
+    if not plan or plan.user_id != current_user.id:
+        raise HTTPException(404, "Plan not found or not authorized")
+    try:
+        return sync_plan_activities(plan_id, current_user.id, db)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(502, f"Sync failed: {e}")
 
 
 @plans_router.post("/{plan_id}/intervals-push")
