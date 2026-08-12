@@ -845,19 +845,17 @@ export default function PlanDetailPage() {
                 </button>
                 {showExportMenu && exportMenuPos && (
                   <div style={{ position: "fixed", top: exportMenuPos.top, left: exportMenuPos.left }} className="w-44 bg-white border border-gray-200 rounded-xl shadow-lg z-50 py-1 text-sm">
-                    {/* ── Garmin ── */}
+                    {/* ── Garmin (disabled) ── */}
                     <div className="relative">
                       <button
-                        onClick={() => setExportSubmenu(exportSubmenu === "garmin" ? null : "garmin")}
-                        className="w-full text-left px-4 py-2 hover:bg-gray-50 text-gray-800 flex items-center justify-between"
+                        disabled
+                        title="Unavailable — use Intervals.icu"
+                        className="w-full text-left px-4 py-2 text-gray-300 cursor-not-allowed flex items-center justify-between select-none"
                       >
-                        <span className="flex items-center gap-2">
-                          Garmin
-                          {garminStatus?.connected && <span className="text-[10px] text-green-500 font-medium">connected</span>}
-                        </span>
-                        <span className="text-gray-400 text-xs">›</span>
+                        <span>Garmin</span>
+                        <span className="text-[10px]">unavailable</span>
                       </button>
-                      {exportSubmenu === "garmin" && (
+                      {false && exportSubmenu === "garmin" && (
                         <div className="absolute left-0 top-full mt-1 w-52 bg-white border border-gray-200 rounded-xl shadow-lg py-1 text-sm z-20">
                           {garminStatus?.connected ? (
                             <>
@@ -953,16 +951,17 @@ export default function PlanDetailPage() {
                       )}
                     </div>
 
-                    {/* ── Download .fit ── */}
+                    {/* ── Download .fit (disabled) ── */}
                     <div className="relative">
                       <button
-                        onClick={() => setExportSubmenu(exportSubmenu === "fit" ? null : "fit")}
-                        className="w-full text-left px-4 py-2 hover:bg-gray-50 text-gray-800 flex items-center justify-between"
+                        disabled
+                        title="Unavailable"
+                        className="w-full text-left px-4 py-2 text-gray-300 cursor-not-allowed flex items-center justify-between select-none"
                       >
                         <span>Download .fit</span>
-                        <span className="text-gray-400 text-xs">›</span>
+                        <span className="text-[10px]">unavailable</span>
                       </button>
-                      {exportSubmenu === "fit" && (
+                      {false && exportSubmenu === "fit" && (
                         <div className="absolute left-0 top-full mt-1 w-52 bg-white border border-gray-200 rounded-xl shadow-lg py-1 text-sm z-20">
                           <button
                             onClick={() => { setShowExportMenu(false); setExportSubmenu(null); handleFitDownload(); }}
@@ -1000,26 +999,16 @@ export default function PlanDetailPage() {
                 </button>
                 {showPullMenu && pullMenuPos && (
                   <div style={{ position: "fixed", top: pullMenuPos.top, left: pullMenuPos.left }} className="w-52 bg-white border border-gray-200 rounded-xl shadow-lg z-50 py-1 text-sm">
-                    {/* Garmin */}
-                    {garminStatus?.connected ? (
-                      <button
-                        onClick={handleActivitySync}
-                        disabled={activitySyncing}
-                        className="w-full text-left px-4 py-2 hover:bg-gray-50 text-gray-800 disabled:text-gray-300"
-                      >
-                        <span className="flex items-center justify-between">
-                          <span>{activitySyncing ? "Pulling…" : "Pull from Garmin"}</span>
-                          <span className="text-[10px] text-green-500 font-medium">connected</span>
-                        </span>
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => { setShowPullMenu(false); setGarminReconnect(false); setShowGarminModal(true); }}
-                        className="w-full text-left px-4 py-2 hover:bg-gray-50 text-teal-600"
-                      >
-                        Connect Garmin…
-                      </button>
-                    )}
+                    {/* Garmin (disabled) */}
+                    <button
+                      disabled
+                      onClick={garminStatus?.connected ? handleActivitySync : () => { setGarminReconnect(false); setShowGarminModal(true); }}
+                      title="Unavailable — use Intervals.icu"
+                      className="w-full text-left px-4 py-2 text-gray-300 cursor-not-allowed flex items-center justify-between select-none"
+                    >
+                      <span>Pull from Garmin</span>
+                      <span className="text-[10px]">unavailable</span>
+                    </button>
                     {/* Intervals.icu */}
                     {intervalsStatus?.connected ? (
                       <button
@@ -1040,26 +1029,16 @@ export default function PlanDetailPage() {
                         Connect Intervals.icu…
                       </button>
                     )}
-                    {/* Strava */}
-                    {stravaStatus?.connected ? (
-                      <button
-                        onClick={handleStravaSync}
-                        disabled={activitySyncing}
-                        className="w-full text-left px-4 py-2 hover:bg-gray-50 text-gray-800 disabled:text-gray-300"
-                      >
-                        <span className="flex items-center justify-between">
-                          <span>{activitySyncing ? "Pulling…" : "Pull from Strava"}</span>
-                          <span className="text-[10px] text-green-500 font-medium">connected</span>
-                        </span>
-                      </button>
-                    ) : (
-                      <button
-                        onClick={handleStravaConnect}
-                        className="w-full text-left px-4 py-2 hover:bg-gray-50 text-orange-500"
-                      >
-                        Connect Strava…
-                      </button>
-                    )}
+                    {/* Strava (disabled) */}
+                    <button
+                      disabled
+                      onClick={stravaStatus?.connected ? handleStravaSync : handleStravaConnect}
+                      title="Unavailable"
+                      className="w-full text-left px-4 py-2 text-gray-300 cursor-not-allowed flex items-center justify-between select-none"
+                    >
+                      <span>Pull from Strava</span>
+                      <span className="text-[10px]">unavailable</span>
+                    </button>
                     {/* Recalculate scores & labels */}
                     <div className="border-t border-gray-100 mt-1 pt-1">
                       <button
