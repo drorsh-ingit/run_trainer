@@ -1049,19 +1049,6 @@ export default function PlanDetailPage() {
                         {rescoring ? "Recalculating…" : "Recalculate scores"}
                       </button>
                     </div>
-                    {/* Disconnect options */}
-                    {stravaStatus?.connected && (
-                      <div className="border-t border-gray-100 mt-1 pt-1">
-                        {stravaStatus?.connected && (
-                          <button
-                            onClick={() => { setShowPullMenu(false); apiFetch("/strava/disconnect", { method: "DELETE" }).then(() => setStravaStatus({ connected: false })); }}
-                            className="w-full text-left px-4 py-2 hover:bg-gray-50 text-red-400 text-xs"
-                          >
-                            Disconnect Strava
-                          </button>
-                        )}
-                      </div>
-                    )}
                   </div>
                 )}
               </div>
