@@ -1,5 +1,6 @@
 import json
 import logging
+import queue
 import time
 import threading
 from datetime import date, timedelta
@@ -7,7 +8,7 @@ from typing import Generator
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session, joinedload
-from database import get_db
+from database import get_db, SessionLocal
 from models.models import TrainingPlan, PlannedWorkout, WorkoutActivity, User
 from schemas import PlanCreateRequest, PlanOut, PlanReviseRequest, SavePreviewRequest, PreviewChatRequest
 from schemas import ClaudePlanResponse, PlanChatRequest, CoachChatRequest
@@ -457,6 +458,27 @@ def _chat_sse(data: dict) -> str:
     return f"data: {json.dumps(data)}\n\n"
 
 
+def _plan_to_context_request(plan: TrainingPlan) -> PlanCreateRequest:
+    """Rehydrate a saved plan into the context object the revision model needs.
+
+    Uses model_construct to bypass create-time validation: the stored plan is already valid, and
+    the strict validators reject cases that are perfectly fine to *revise* — general plans (no
+    goal_distance) and race plans whose goal_date has already passed. Building a strict
+    PlanCreateRequest here 500'd on those plans ("Internal server error" in the adjust chat).
+    """
+    return PlanCreateRequest.model_construct(
+        plan_type=plan.plan_type or "race",
+        goal_distance_km=plan.goal_distance,
+        goal_date=plan.goal_date,
+        plan_duration_weeks=plan.plan_duration_weeks,
+        schedule_description=plan.schedule_description or "",
+        injuries=plan.injuries or "",
+        additional_notes=plan.additional_notes or "",
+        current_weekly_km=0,
+        fitness_level="intermediate",
+    )
+
+
 @router.post("/{plan_id}/chat")
 def chat_adjust(
     plan_id: int,
@@ -470,43 +492,77 @@ def chat_adjust(
     if not _is_authorized(plan, current_user):
         raise HTTPException(status_code=403, detail="Not authorized")
 
-    req = PlanCreateRequest(
-        goal_distance_km=plan.goal_distance,
-        goal_date=plan.goal_date,
-        schedule_description=plan.schedule_description,
-        injuries=plan.injuries,
-        additional_notes=plan.additional_notes,
-        current_weekly_km=0,
-        fitness_level="intermediate",
-    )
+    req = _plan_to_context_request(plan)
 
     def stream() -> Generator[str, None, None]:
         yield _chat_sse({"type": "status", "message": "Thinking…"})
-        try:
-            model = body.ai_model or plan.ai_model or "claude-sonnet-4-6"
-            result = chat_plan_revision(plan.plan_data, req, body.history, body.message, model=model)
-        except Exception as e:
-            yield _chat_sse({"type": "error", "message": str(e)})
+
+        # Run the (slow, blocking) model call on a worker thread so we can emit SSE heartbeats
+        # while we wait. Without periodic bytes the browser can idle-timeout the streaming fetch
+        # mid-call and surface a network error ("Load failed" in Safari).
+        # NB: read everything the worker needs off the ORM `plan` here, on the request thread —
+        # SQLAlchemy sessions are not thread-safe, and touching `plan.plan_data` from the worker
+        # detaches the instance ("not persistent within this Session") before the later save.
+        model = body.ai_model or plan.ai_model or "claude-sonnet-4-6"
+        plan_data = plan.plan_data
+        result_q: queue.Queue = queue.Queue(maxsize=1)
+
+        def _work():
+            try:
+                result_q.put(("ok", chat_plan_revision(plan_data, req, body.history, body.message, model=model)))
+            except Exception as e:  # surfaced to the client as an error event
+                result_q.put(("error", str(e)))
+
+        worker = threading.Thread(target=_work, daemon=True)
+        worker.start()
+
+        while True:
+            try:
+                status, payload = result_q.get(timeout=10)
+                break
+            except queue.Empty:
+                yield ": keepalive\n\n"  # SSE comment — ignored by the client, keeps the socket warm
+
+        if status == "error":
+            yield _chat_sse({"type": "error", "message": payload})
             return
+        result = payload
 
         if result["type"] == "question":
             yield _chat_sse({"type": "question", "message": result["message"]})
             return
 
         yield _chat_sse({"type": "status", "message": "Updating your plan…"})
-        revised = result["plan"]
-        db.query(PlannedWorkout).filter(PlannedWorkout.plan_id == plan.id).delete()
-        plan.plan_data = revised.model_dump()
-        db.flush()
-        _save_workouts(db, plan, revised, plan.goal_date)
-        db.commit()
-        db.refresh(plan)
-
+        # Persist on a fresh session. The request-scoped `db` from Depends(get_db) is closed when
+        # the endpoint function returns, which happens BEFORE this generator streams — reusing it
+        # here fails with "Instance ... is not persistent within this Session".
         from schemas import PlanOut
+        revised = result["plan"]
+        save_db = SessionLocal()
+        try:
+            saved = save_db.query(TrainingPlan).filter(TrainingPlan.id == plan_id).first()
+            if saved is None:
+                yield _chat_sse({"type": "error", "message": "Plan no longer exists."})
+                return
+            save_db.query(PlannedWorkout).filter(PlannedWorkout.plan_id == saved.id).delete()
+            saved.plan_data = revised.model_dump()
+            save_db.flush()
+            _save_workouts(save_db, saved, revised, saved.goal_date)
+            save_db.commit()
+            save_db.refresh(saved)
+            payload_plan = PlanOut.model_validate(saved).model_dump(mode="json")
+        except Exception as e:
+            save_db.rollback()
+            logging.exception("Failed to save revised plan %s", plan_id)
+            yield _chat_sse({"type": "error", "message": f"Couldn't save the revised plan: {e}"})
+            return
+        finally:
+            save_db.close()
+
         yield _chat_sse({
             "type": "plan",
             "message": result["message"],
-            "plan": PlanOut.model_validate(plan).model_dump(mode="json"),
+            "plan": payload_plan,
         })
 
     return StreamingResponse(stream(), media_type="text/event-stream",

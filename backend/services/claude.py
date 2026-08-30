@@ -387,6 +387,32 @@ Keep unchanged weeks exactly as they are. Only modify what the runner asked to c
 """
 
 
+# Fields we hand the model when it revises a plan. `description` MUST be included: the model
+# mirrors the structure it is shown, so dropping descriptions here makes it return workouts without
+# a `description`, which fails ClaudePlanResponse validation (every adjust would 422 internally).
+_REVISION_WORKOUT_FIELDS = (
+    "day_of_week", "type", "description", "distance_km",
+    "distance_label", "duration_minutes", "is_optional",
+)
+
+
+def _slim_plan_for_revision(plan: dict) -> dict:
+    """Reduce a stored plan to the fields the model needs to reason about and re-emit."""
+    slim_weeks = []
+    for week in plan.get("weeks", []):
+        slim_workouts = [
+            {k: w[k] for k in _REVISION_WORKOUT_FIELDS if k in w}
+            for w in week.get("workouts", [])
+        ]
+        slim_weeks.append({
+            "week_number": week.get("week_number"),
+            "theme": week.get("theme"),
+            "total_km": week.get("total_km"),
+            "workouts": slim_workouts,
+        })
+    return {"summary": plan.get("summary", ""), "total_weeks": plan.get("total_weeks"), "weeks": slim_weeks}
+
+
 def chat_plan_revision(
     existing_plan: dict,
     req: PlanCreateRequest,
@@ -399,24 +425,8 @@ def chat_plan_revision(
     Returns {"type": "question", "message": "..."} or
             {"type": "plan", "message": "...", "plan": ClaudePlanResponse}.
     """
-    # Strip descriptions to reduce token count — the model only needs structure for reasoning
-    def _slim_plan(plan: dict) -> dict:
-        slim_weeks = []
-        for week in plan.get("weeks", []):
-            slim_workouts = [
-                {k: w[k] for k in ("day_of_week", "type", "distance_km", "distance_label", "duration_minutes", "is_optional") if k in w}
-                for w in week.get("workouts", [])
-            ]
-            slim_weeks.append({
-                "week_number": week.get("week_number"),
-                "theme": week.get("theme"),
-                "total_km": week.get("total_km"),
-                "workouts": slim_workouts,
-            })
-        return {"summary": plan.get("summary", ""), "total_weeks": plan.get("total_weeks"), "weeks": slim_weeks}
-
     plan_context = (
-        f"Current training plan:\n{json.dumps(_slim_plan(existing_plan))}\n\n"
+        f"Current training plan:\n{json.dumps(_slim_plan_for_revision(existing_plan))}\n\n"
         f"Runner context:\n"
         f"- Goal: {req.goal_distance_km} km on {req.goal_date}\n"
         f"- Schedule: {req.schedule_description}\n"
