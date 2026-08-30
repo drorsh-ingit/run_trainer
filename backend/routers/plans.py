@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session, joinedload
 from database import get_db, SessionLocal
-from models.models import TrainingPlan, PlannedWorkout, WorkoutActivity, User
+from models.models import TrainingPlan, PlannedWorkout, WorkoutActivity, WorkoutFeedback, User
 from schemas import PlanCreateRequest, PlanOut, PlanReviseRequest, SavePreviewRequest, PreviewChatRequest
 from schemas import ClaudePlanResponse, PlanChatRequest, CoachChatRequest
 from schemas import AssessStartRequest, AssessReplyRequest, AssessApplyRequest
@@ -80,6 +80,67 @@ def _save_workouts(db: Session, plan: TrainingPlan, claude_plan, goal_date: date
             is_optional=False,
             steps=[],
         ))
+
+
+def _replace_plan_workouts(db: Session, plan: TrainingPlan, claude_plan, goal_date: date | None):
+    """Rewrite a plan's PlannedWorkouts without orphaning linked activities/feedback.
+
+    workout_activities and workout_feedback both reference planned_workouts.id (no ON DELETE),
+    so deleting the workouts outright violates those FKs on Postgres. Instead we detach the
+    children, delete + recreate the workouts, then re-link each child to the new workout on the
+    same calendar date. Nothing is deleted from workout_activities/feedback, so no synced activity
+    data is lost — any child whose date no longer has a workout is simply left unmatched (a state
+    the app already supports).
+    """
+    old = db.query(PlannedWorkout).filter(PlannedWorkout.plan_id == plan.id).all()
+    old_ids = [w.id for w in old]
+    date_by_old_id = {w.id: w.scheduled_date for w in old}
+
+    activities = (
+        db.query(WorkoutActivity).filter(WorkoutActivity.workout_id.in_(old_ids)).all() if old_ids else []
+    )
+    feedback = (
+        db.query(WorkoutFeedback).filter(WorkoutFeedback.workout_id.in_(old_ids)).all() if old_ids else []
+    )
+    # An activity's own start_date is the ground truth for which day it belongs to; fall back to
+    # the date of the workout it was matched to. Feedback has no date of its own, so use its
+    # workout's date.
+    act_target_date = {
+        a.id: (a.start_date.date() if a.start_date else date_by_old_id.get(a.workout_id))
+        for a in activities
+    }
+    fb_target_date = {f.id: date_by_old_id.get(f.workout_id) for f in feedback}
+
+    # Detach so the workouts can be deleted, then delete + recreate.
+    for a in activities:
+        a.workout_id = None
+    for f in feedback:
+        f.workout_id = None
+    db.flush()
+    db.query(PlannedWorkout).filter(PlannedWorkout.plan_id == plan.id).delete()
+    db.flush()
+    _save_workouts(db, plan, claude_plan, goal_date)
+    db.flush()  # assign ids to the new workouts
+
+    # Re-link children to the new workout sharing their date. workout_activities.workout_id is
+    # unique and PlannedWorkout.activity is one-to-one, so hand each new workout at most one child.
+    new_id_by_date: dict[date, int] = {}
+    for w in db.query(PlannedWorkout).filter(PlannedWorkout.plan_id == plan.id).all():
+        new_id_by_date.setdefault(w.scheduled_date, w.id)
+
+    taken_by_activity: set[int] = set()
+    for a in activities:
+        wid = new_id_by_date.get(act_target_date.get(a.id))
+        if wid is not None and wid not in taken_by_activity:
+            a.workout_id = wid
+            taken_by_activity.add(wid)
+
+    taken_by_feedback: set[int] = set()
+    for f in feedback:
+        wid = new_id_by_date.get(fb_target_date.get(f.id))
+        if wid is not None and wid not in taken_by_feedback:
+            f.workout_id = wid
+            taken_by_feedback.add(wid)
 
 
 @router.get("/", response_model=list[PlanOut])
@@ -544,10 +605,9 @@ def chat_adjust(
             if saved is None:
                 yield _chat_sse({"type": "error", "message": "Plan no longer exists."})
                 return
-            save_db.query(PlannedWorkout).filter(PlannedWorkout.plan_id == saved.id).delete()
             saved.plan_data = revised.model_dump()
             save_db.flush()
-            _save_workouts(save_db, saved, revised, saved.goal_date)
+            _replace_plan_workouts(save_db, saved, revised, saved.goal_date)
             save_db.commit()
             save_db.refresh(saved)
             payload_plan = PlanOut.model_validate(saved).model_dump(mode="json")

@@ -46,3 +46,14 @@ rehydration for general/past-date plans. Full suite: 29 passed.
 ### Known limitation (not fixed — user chose "just the bug fix")
 Adjusting a large plan regenerates the ENTIRE plan, so a 46-week plan takes ~3–5 min. Heartbeats
 keep it from failing, but a future change could regenerate only affected weeks / stream incrementally.
+
+## Follow-up fix (production Postgres) — FK violation on save
+Surfaced only after the clean error event above exposed it (SQLite hid it — no FK enforcement).
+Adjusting a plan deleted+recreated all planned_workouts, violating the FK from workout_activities
+(and workout_feedback) → "Couldn't save the revised plan: ForeignKeyViolation ... Key (id)=(700)".
+
+Fix: `_replace_plan_workouts` detaches linked activities/feedback, deletes+recreates the workouts,
+then re-links each child to the new workout on the same date. No activity/feedback rows are
+deleted (no data loss); children whose date no longer has a workout are left unmatched (a
+supported state). Verified with `tests/test_plan_workout_replace.py` running SQLite with
+foreign_keys=ON to mirror Postgres. Full suite: 33 passed.
